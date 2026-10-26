@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Backend — Foundation
+  version: 0.1.0
+  description: |
+    Task 001 health and envelope conventions only. Product `/v1` APIs are not implemented.
+servers:
+  - url: http://localhost:3000
+paths:
+  /health/live:
+    get:
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is running
+          headers:
+            x-request-id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSuccess"
+  /health/ready:
+    get:
+      summary: Readiness probe (database connectivity)
+      responses:
+        "200":
+          description: Dependencies ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadySuccess"
+        "503":
+          description: Dependency unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    LiveSuccess:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [ok]
+        meta:
+          $ref: "#/components/schemas/Meta"
+    ReadySuccess:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          required: [status, checks]
+          properties:
+            status:
+              type: string
+              enum: [ok]
+            checks:
+              type: object
+              required: [database]
+              properties:
+                database:
+                  type: string
+                  enum: [up]
+        meta:
+          $ref: "#/components/schemas/Meta"
+    Meta:
+      type: object
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string

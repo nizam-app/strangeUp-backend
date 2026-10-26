@@ -1,0 +1,131 @@
+{
+  "created": "2026-10-26",
+  "source": "user-provided Figma PDF export and Phase 0 review",
+  "files": [
+    {
+      "path": ".cursor/rules/engineering.mdc",
+      "size": 814,
+      "sha256": "71f84d2b83a08a19ccc5b156d8514f01f5540f471183db046c838c460c13a8ae"
+    },
+    {
+      "path": "AGENTS.md",
+      "size": 1491,
+      "sha256": "2d28ef43893ea76ff40914d8770b1440eb9136c14ab241408eb4f88e21eca2d8"
+    },
+    {
+      "path": "README_MILESTONE_0_2.md",
+      "size": 3535,
+      "sha256": "1cac775b3c09d94c07a94cc849e498c5a311b6030ec7566d63d4caf19423810c"
+    },
+    {
+      "path": "cursor_tasks/TASK_001_BACKEND_FOUNDATION.md",
+      "size": 6472,
+      "sha256": "935125daab6151b2b11b8039fafabe44674a4538ac839cc45a823b3190a9aefd"
+    },
+    {
+      "path": "docs/api/CONVENTIONS.md",
+      "size": 2618,
+      "sha256": "9e00ad56bdaa083776ed4bfcdad1793e7a1fa6afffd6fdfda9851fb55d4a3182"
+    },
+    {
+      "path": "docs/api/ENDPOINT_CANDIDATES.md",
+      "size": 3314,
+      "sha256": "9b3c844b506ed4ea5a75bdcc267c29b1b5c88f88314fa6aa3279b931ad1c0ca0"
+    },
+    {
+      "path": "docs/architecture/MODULES.md",
+      "size": 2208,
+      "sha256": "e484199efcb1c2eede50d0e1bc2c88061d6f1e6a6b24f6888895c179b527663e"
+    },
+    {
+      "path": "docs/architecture/SYSTEM.md",
+      "size": 3199,
+      "sha256": "beaeb30662aaad39f0ed1f3caae1af88fae80a79486e74395e3f6961089338da"
+    },
+    {
+      "path": "docs/database/DATA_MODEL.md",
+      "size": 4537,
+      "sha256": "b6faf394d412bb8cdb2e91f7124ecedf599a478ae3c050f1b1a14b35f69a686a"
+    },
+    {
+      "path": "docs/decisions/ADR-001-modular-monolith.md",
+      "size": 1013,
+      "sha256": "340c4626c2fe0e4c28ffd6ad379b8c3853a0987bf2b68ae745fbb30f412195d1"
+    },
+    {
+      "path": "docs/decisions/ADR-002-unified-access-policies.md",
+      "size": 707,
+      "sha256": "d10156d37928d74027945b0554fe6716840d4c9eda1dd9487360a9cede804fa5"
+    },
+    {
+      "path": "docs/decisions/ADR-003-payment-domain-separation.md",
+      "size": 873,
+      "sha256": "70ac2d9d01e9cb9a581ebb03b79f69f45f16f11a3136f236ae02f6ccc7913736"
+    },
+    {
+      "path": "docs/operations/DATA_CLASSIFICATION_AND_RETENTION.md",
+      "size": 2239,
+      "sha256": "60030ffa2049454b08bf0ceef0757b92390d83403b20c1bf530cb7a2630cb3ae"
+    },
+    {
+      "path": "docs/plans/ROADMAP.md",
+      "size": 2131,
+      "sha256": "3526a4d6851a7a7e600095d400d6a3312b1141678e3fa63eb1b089b3895cf37b"
+    },
+    {
+      "path": "docs/plans/STATUS.md",
+      "size": 1573,
+      "sha256": "0b23cffbd9a6eac5fe8be3385148d78374714e9218de0f49f4f70b3e3cade259"
+    },
+    {
+      "path": "docs/product/BUSINESS_RULES.md",
+      "size": 3643,
+      "sha256": "c0d61b0e078281c0a2f83cd6f4da7112fc7fbba2925ac1721fce82493db09270"
+    },
+    {
+      "path": "docs/product/FEATURE_MATRIX.md",
+      "size": 3682,
+      "sha256": "6d3456459e14a93470378f2665e32bb608e2a6bc92a7cb0fb56c938d135f33ab"
+    },
+    {
+      "path": "docs/product/OPEN_QUESTIONS.md",
+      "size": 3645,
+      "sha256": "51fa5afdb7bb6dcaed4941546e8d71c6346629dbd1b96a0220d0e6f79e330ed7"
+    },
+    {
+      "path": "docs/product/PRD_DRAFT.md",
+      "size": 7074,
+      "sha256": "2dc2a68e0307df4af54630dee5140837212b221fa924edf82345dd486eb152d6"
+    },
+    {
+      "path": "docs/product/SCREEN_TRACEABILITY.md",
+      "size": 8306,
+      "sha256": "f8ad40f0d8d3dacc47eafe9bbf5bb8368cbeb20e2e8ec2500d547f8248c99db6"
+    },
+    {
+      "path": "docs/product/USER_FLOWS.md",
+      "size": 5614,
+      "sha256": "cb11d232b13fcdee3ed17c97c184659d3509dad7edf3c7db7541aed55862effa"
+    },
+    {
+      "path": "docs/security/PERMISSIONS_MATRIX.md",
+      "size": 3906,
+      "sha256": "8dc1134dedd19e6a8d873d1085e4b447b24f8c6370d24b719730e1dead0e3c0a"
+    },
+    {
+      "path": "docs/security/SECURITY_MODEL.md",
+      "size": 3463,
+      "sha256": "0fbb2c20cce5ec2eff63f20f0c461715670095eb584a5a52bae8975cd89e7410"
+    },
+    {
+      "path": "docs/source/PHASE0_DISCOVERY_REFERENCE.md",
+      "size": 29915,
+      "sha256": "76e415719bde2cc620aacf608213982335461eb0ebb043175e488a84ebf01f7c"
+    },
+    {
+      "path": "docs/testing/TEST_STRATEGY.md",
+      "size": 2643,
+      "sha256": "9af6cdb49102bf2c9f62c9e29975b4742e5ebb6c43ceb73c26bda02bc18f037d"
+    }
+  ]
+}

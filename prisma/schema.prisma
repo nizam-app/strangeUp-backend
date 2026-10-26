@@ -1,0 +1,11 @@
+// StrangeUp — Task 001 foundation schema (no product/business models).
+// First approved domain models will be added in a later task with explicit migrations.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}

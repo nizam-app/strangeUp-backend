@@ -1,0 +1,12 @@
+---
+description: StrangeUp backend architecture and change controls
+alwaysApply: true
+---
+
+- Inspect existing repo / docs before writing code.
+- Stack: TypeScript + Node.js + Express + Prisma + PostgreSQL; Flutter consumes versioned REST; no framework substitutions.
+- Follow AGENTS.md, documented accepted ADRs, and approved PRD; unresolved product flows must NOT be invented.
+- Modular monolith, bounded modules, explicit API DTOs and server-side resource-level authorization.
+- Validate inputs, never emit sensitive data, no secrets in source/logs, no production destructive operations.
+- Avoid broad edits or premature tables/packages. Separate implementation and verification status.
+- After each task report files, packages, migrations, commands/tests actually executed, results, gaps and next bounded task.

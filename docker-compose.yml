@@ -1,0 +1,22 @@
+# Optional local PostgreSQL (requires Docker). Not used automatically by the app.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: strangeup-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: strangeup
+      POSTGRES_PASSWORD: strangeup
+      POSTGRES_DB: strangeup_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - strangeup_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U strangeup -d strangeup_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  strangeup_pg_data:

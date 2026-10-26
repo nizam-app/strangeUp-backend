@@ -1,0 +1,23 @@
+node_modules/
+dist/
+coverage/
+generated/
+
+# Environment (keep example only)
+.env
+.env.*
+!.env.example
+
+# Logs and OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Prisma local dev state
+.prisma/
+
+# Editor / agent skill artifacts from tooling
+.agents/
+.claude/
+.windsurf/
+skills-lock.json

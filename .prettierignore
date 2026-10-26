@@ -1,0 +1,10 @@
+dist
+generated
+node_modules
+coverage
+package-lock.json
+docs
+cursor_tasks
+MANIFEST.json
+README_MILESTONE_0_2.md
+AGENTS.md
