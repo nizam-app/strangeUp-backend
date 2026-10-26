@@ -8,17 +8,24 @@ import { createErrorHandler, notFoundHandler } from "./common/middleware/error-h
 import { requestIdMiddleware } from "./common/middleware/request-id.js";
 import { redactSensitive } from "./common/utils/redact.js";
 import type { DatabaseClient } from "./infrastructure/database/prisma.js";
+import { createDevEmailSender } from "./modules/auth/email-sender.js";
+import { createAuthController } from "./modules/auth/auth.controller.js";
+import { createAuthRouter } from "./modules/auth/auth.routes.js";
+import { createMeRouter } from "./modules/me/me.routes.js";
 import { createHealthRouter } from "./routes/health.js";
+import type { EmailSender } from "./modules/auth/email-sender.js";
 
 export type CreateAppDeps = {
   env: AppEnv;
   logger: Logger;
   db: DatabaseClient | null;
+  emailSender?: EmailSender;
 };
 
 export function createApp(deps: CreateAppDeps): express.Application {
   const app = express();
   const { env, logger, db } = deps;
+  const emailSender = deps.emailSender ?? createDevEmailSender(logger);
 
   if (env.TRUST_PROXY) {
     app.set("trust proxy", 1);
@@ -53,6 +60,12 @@ export function createApp(deps: CreateAppDeps): express.Application {
   app.use(express.json({ limit: env.JSON_BODY_LIMIT }));
 
   app.use("/health", createHealthRouter({ db }));
+
+  if (db) {
+    const authController = createAuthController({ db, env, emailSender });
+    app.use("/v1/auth", createAuthRouter({ db, env, emailSender, controller: authController }));
+    app.use("/v1/me", createMeRouter({ db, authService: authController.authService }));
+  }
 
   app.use(notFoundHandler);
   app.use(createErrorHandler({ logger, isProduction: env.isProduction }));

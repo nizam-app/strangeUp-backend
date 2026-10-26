@@ -1,5 +1,7 @@
 # REST API Conventions — Proposed
 
+**Implemented routes:** maintain `docs/api/CURRENT_APIS.md` whenever APIs change. Flutter integration: `docs/api/FLUTTER_DEVELOPER_HANDOFF.md`.
+
 ## Basic contract
 
 - Base path `/v1`; JSON UTF-8; camelCase payloads; fixed ISO-8601 UTC instant representation and IANA time zone field when needed.

@@ -11,6 +11,8 @@ Foundation service for the StrangeUp mobile client (Flutter). **Task 001** provi
 
 See `AGENTS.md`, `docs/architecture/SYSTEM.md`, and `cursor_tasks/TASK_001_BACKEND_FOUNDATION.md`.
 
+**API docs for Flutter:** live routes in `docs/api/CURRENT_APIS.md`; integration guide in `docs/api/FLUTTER_DEVELOPER_HANDOFF.md`.
+
 ## Prerequisites
 
 - Node.js **22+** and npm
@@ -68,7 +70,19 @@ Lifecycle (does not delete data):
 ```powershell
 npx prisma dev stop strangeup_dev
 npx prisma dev start strangeup_dev
+npx prisma dev start strangeup_test   # if integration tests cannot connect
+npx prisma dev ls                     # confirm TCP ports; update .env if ports changed
 ```
+
+**Integration DB recovery:** If `INTEGRATION_DATABASE_URL` points at a stopped instance (connection refused on the test TCP port), run `npx prisma dev start strangeup_test`, then `npx prisma dev ls` and align `INTEGRATION_DATABASE_URL` with the **strangeup_test** TCP URL. Apply migrations to the test target only:
+
+```powershell
+$env:DATABASE_URL = "<INTEGRATION_DATABASE_URL from .env>"
+npx prisma migrate deploy
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+```
+
+The test harness refuses to run when `DATABASE_URL` and `INTEGRATION_DATABASE_URL` resolve to the same host/port/database path (fail-closed).
 
 ### Alternatives
 
@@ -85,7 +99,7 @@ Remove-Item Env:RUN_INTEGRATION -ErrorAction SilentlyContinue
 
 Without `RUN_INTEGRATION=1`, the real DB test is skipped by design.
 
-No product migrations are included in Task 001. Prisma schema contains **no business models**.
+Identity Phase 1 schema and migrations live under `prisma/migrations/` (see `docs/plans/STATUS.md`).
 
 ## API envelope (foundation)
 

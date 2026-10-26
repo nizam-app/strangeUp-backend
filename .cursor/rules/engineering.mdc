@@ -5,7 +5,8 @@ alwaysApply: true
 
 - Inspect existing repo / docs before writing code.
 - Stack: TypeScript + Node.js + Express + Prisma + PostgreSQL; Flutter consumes versioned REST; no framework substitutions.
-- Follow AGENTS.md, documented accepted ADRs, and approved PRD; unresolved product flows must NOT be invented.
+- Follow AGENTS.md, documented accepted ADRs (including ADR-004 identity Phase 1), and approved PRD; unresolved product flows must NOT be invented.
+- When adding, changing, or removing any HTTP API, update `docs/api/CURRENT_APIS.md` and `docs/api/FLUTTER_DEVELOPER_HANDOFF.md` in the same PR/commit as the route change.
 - Modular monolith, bounded modules, explicit API DTOs and server-side resource-level authorization.
 - Validate inputs, never emit sensitive data, no secrets in source/logs, no production destructive operations.
 - Avoid broad edits or premature tables/packages. Separate implementation and verification status.

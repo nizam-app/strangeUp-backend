@@ -1,5 +1,4 @@
-// StrangeUp — Task 001 foundation schema (no product/business models).
-// First approved domain models will be added in a later task with explicit migrations.
+// StrangeUp — identity Phase 1 (Task 002B.1). See ADR-004.
 
 generator client {
   provider = "prisma-client"
@@ -8,4 +7,137 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum AccountStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AgeEligibilityStatus {
+  UNKNOWN
+  ELIGIBLE
+  INELIGIBLE
+  NEEDS_REVIEW
+}
+
+enum IdentityVerificationStatus {
+  NOT_STARTED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AuthChallengeType {
+  EMAIL_VERIFY
+  PASSWORD_RESET
+  PHONE_OTP
+}
+
+enum ConsentType {
+  TERMS
+  PRIVACY
+  AGE_ATTESTATION
+}
+
+model User {
+  id                         String                     @id @default(uuid()) @db.Uuid
+  accountStatus              AccountStatus              @default(PENDING_VERIFICATION)
+  email                      String
+  emailNormalized            String                     @unique
+  phoneE164                  String?                    @unique
+  emailVerifiedAt            DateTime?
+  phoneVerifiedAt            DateTime?
+  ageEligibilityStatus       AgeEligibilityStatus       @default(UNKNOWN)
+  identityVerificationStatus IdentityVerificationStatus @default(NOT_STARTED)
+  suspendedAt                DateTime?
+  deletedAt                  DateTime?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+
+  passwordCredential PasswordCredential?
+  sessions           Session[]
+  authChallenges     AuthChallenge[]
+  consentRecords     ConsentRecord[]
+  profile            Profile?
+
+  @@index([accountStatus])
+}
+
+model PasswordCredential {
+  userId            String   @id @db.Uuid
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  passwordHash      String
+  passwordChangedAt DateTime @default(now())
+  mustReauthAfter   DateTime?
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId         String    @db.Uuid
+  refreshTokenHash         String
+  previousRefreshTokenHash String?
+  expiresAt                DateTime
+  revokedAt        DateTime?
+  userAgent        String?
+  ipHash           String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([refreshTokenHash])
+}
+
+model AuthChallenge {
+  id           String            @id @default(uuid()) @db.Uuid
+  userId       String?           @db.Uuid
+  user         User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         AuthChallengeType
+  target       String
+  secretHash   String
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  attemptCount Int               @default(0)
+  createdAt    DateTime          @default(now())
+
+  @@index([type, target])
+  @@index([userId, type])
+}
+
+model ConsentRecord {
+  id              String      @id @default(uuid()) @db.Uuid
+  userId          String      @db.Uuid
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentType     ConsentType
+  documentVersion String
+  recordedAt      DateTime    @default(now())
+  ipHash          String?
+
+  @@index([userId])
+}
+
+model Profile {
+  userId           String   @id @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName        String?
+  lastName         String?
+  displayName      String?
+  bio              String?
+  birthDate        DateTime @db.Date
+  scheduleTimeZone String?
+}
+
+model RegisterIdempotency {
+  id           String   @id
+  requestHash  String
+  responseJson String
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([expiresAt])
 }

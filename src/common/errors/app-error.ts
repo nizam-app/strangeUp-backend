@@ -1,5 +1,14 @@
 export type AppErrorCode =
-  "VALIDATION_ERROR" | "NOT_FOUND" | "INTERNAL_ERROR" | "SERVICE_UNAVAILABLE";
+  | "VALIDATION_ERROR"
+  | "NOT_FOUND"
+  | "INTERNAL_ERROR"
+  | "SERVICE_UNAVAILABLE"
+  | "AUTH_INVALID_CREDENTIALS"
+  | "AUTH_UNAUTHORIZED"
+  | "AUTH_FORBIDDEN"
+  | "AUTH_CHALLENGE_EXPIRED"
+  | "AUTH_RATE_LIMITED"
+  | "CONFLICT";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;
