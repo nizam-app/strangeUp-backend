@@ -1,0 +1,6 @@
+export const DISCOVER_PEOPLE_DEFAULT_LIMIT = 20;
+export const DISCOVER_PEOPLE_MAX_LIMIT = 50;
+export const BLOCKS_LIST_DEFAULT_LIMIT = 50;
+export const BLOCKS_LIST_MAX_LIMIT = 100;
+
+export const PUBLIC_NOT_FOUND_MESSAGE = "Not found";

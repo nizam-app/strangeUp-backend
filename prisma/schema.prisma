@@ -42,6 +42,22 @@ enum ConsentType {
   AGE_ATTESTATION
 }
 
+enum ProfileVisibility {
+  EVERYONE
+  VERIFIED_USERS_ONLY
+}
+
+enum FavoriteActivitySkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum FavoriteActivityCadence {
+  WEEKLY
+  CASUAL
+}
+
 model User {
   id                         String                     @id @default(uuid()) @db.Uuid
   accountStatus              AccountStatus              @default(PENDING_VERIFICATION)
@@ -62,6 +78,34 @@ model User {
   authChallenges     AuthChallenge[]
   consentRecords     ConsentRecord[]
   profile            Profile?
+  userInterests      UserInterest[]
+  favoriteActivities ProfileFavoriteActivity[]
+  blocksInitiated    UserBlock[]               @relation("UserBlocksInitiated")
+  blocksReceived     UserBlock[]               @relation("UserBlocksReceived")
+  hostedActivities   Activity[]
+  activityParticipations ActivityParticipation[]
+  followsInitiated   UserFollow[]                @relation("UserFollowsInitiated")
+  followsReceived    UserFollow[]                @relation("UserFollowsReceived")
+  wavesSent          UserWave[]                  @relation("UserWavesSent")
+  wavesReceived      UserWave[]                  @relation("UserWavesReceived")
+  messageRequestsSent     DirectMessageRequest[] @relation("MessageRequestsSent")
+  messageRequestsReceived DirectMessageRequest[] @relation("MessageRequestsReceived")
+  conversationParticipations DirectConversationParticipant[]
+  conversationsAsLow  DirectConversation[]       @relation("ConversationParticipantLow")
+  conversationsAsHigh DirectConversation[]       @relation("ConversationParticipantHigh")
+  directMessagesAuthored DirectMessage[]
+  ownedCommunityGroups           CommunityGroup[]            @relation("CommunityGroupOwner")
+  communityMemberships           CommunityMembership[]       @relation("CommunityMembershipUser")
+  communityMembershipsApproved   CommunityMembership[]       @relation("CommunityMembershipApprover")
+  communityPostsAuthored         CommunityPost[]             @relation("CommunityPostAuthor")
+  communityPostsPinned           CommunityPost[]             @relation("CommunityPostPinnedBy")
+  communityPostsRemoved          CommunityPost[]             @relation("CommunityPostRemovedBy")
+  communityPostCommentsAuthored  CommunityPostComment[]      @relation("CommunityPostCommentAuthor")
+  communityPostCommentsRemoved   CommunityPostComment[]      @relation("CommunityPostCommentRemovedBy")
+  communityPostLikes             CommunityPostLike[]
+  communityGroupMessagesAuthored CommunityGroupMessage[]
+  communityGroupReadStates       CommunityGroupReadState[]
+  communityGroupActivitiesAttached CommunityGroupActivity[]  @relation("CommunityGroupActivityAttacher")
 
   @@index([accountStatus])
 }
@@ -122,14 +166,68 @@ model ConsentRecord {
 }
 
 model Profile {
-  userId           String   @id @db.Uuid
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  firstName        String?
-  lastName         String?
-  displayName      String?
-  bio              String?
-  birthDate        DateTime @db.Date
-  scheduleTimeZone String?
+  userId            String             @id @db.Uuid
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName         String?
+  lastName          String?
+  displayName       String?
+  username          String?
+  bio               String?
+  birthDate         DateTime           @db.Date
+  scheduleTimeZone  String?
+  profileVisibility ProfileVisibility  @default(VERIFIED_USERS_ONLY)
+  locationCity      String?
+  locationRegion    String?
+  avatarStorageKey  String?
+  avatarContentType String?
+  avatarUpdatedAt   DateTime?
+}
+
+model ProfileFavoriteActivity {
+  id            String                   @id @default(uuid()) @db.Uuid
+  userId        String                   @db.Uuid
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sortOrder     Int
+  title         String
+  skillLevel    FavoriteActivitySkillLevel
+  cadence       FavoriteActivityCadence
+  scheduleNote  String?
+  placeLabel    String?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  @@unique([userId, sortOrder])
+  @@index([userId])
+}
+
+model Interest {
+  id        String         @id @db.Uuid
+  slug      String         @unique
+  label     String
+  sortOrder Int
+  selections UserInterest[]
+}
+
+model UserInterest {
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interestId String   @db.Uuid
+  interest   Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([userId, interestId])
+  @@index([interestId])
+}
+
+model UserBlock {
+  blockerId String   @db.Uuid
+  blockedId String   @db.Uuid
+  blocker   User     @relation("UserBlocksInitiated", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("UserBlocksReceived", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
 }
 
 model RegisterIdempotency {
@@ -140,4 +238,379 @@ model RegisterIdempotency {
   expiresAt    DateTime
 
   @@index([expiresAt])
+}
+
+enum ActivityMode {
+  IN_PERSON
+  VIRTUAL
+  HYBRID
+}
+
+enum ActivityStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+}
+
+enum ActivityAudience {
+  PUBLIC
+  FOLLOWERS_ONLY
+}
+
+enum ActivityParticipationState {
+  CONFIRMED
+  WAITLISTED
+  CANCELLED
+}
+
+model ActivityCategory {
+  id         String     @id @db.Uuid
+  slug       String     @unique
+  label      String
+  sortOrder  Int
+  activities Activity[]
+}
+
+model Activity {
+  id                    String           @id @default(uuid()) @db.Uuid
+  hostId                String           @db.Uuid
+  host                  User             @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  title                 String
+  description           String?
+  categoryId            String           @db.Uuid
+  category              ActivityCategory @relation(fields: [categoryId], references: [id])
+  coverStorageKey       String?
+  coverContentType      String?
+  startsAt              DateTime
+  endsAt                DateTime
+  timeZone              String
+  mode                  ActivityMode
+  status                ActivityStatus   @default(DRAFT)
+  audience              ActivityAudience @default(PUBLIC)
+  venueName             String?
+  locationCity          String?
+  locationRegion        String?
+  meetingInstructions   String?
+  virtualMeetingDetails String?
+  skillNotes            String?
+  gearNotes             String?
+  capacity              Int
+  waitlistEnabled       Boolean          @default(false)
+  publishedAt           DateTime?
+  cancelledAt           DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  participations ActivityParticipation[]
+  communityGroupLinks CommunityGroupActivity[]
+  communityPosts      CommunityPost[]
+
+  @@index([status, audience, startsAt])
+  @@index([categoryId, status, startsAt])
+  @@index([hostId, status])
+  @@index([locationCity, locationRegion])
+}
+
+model ActivityParticipation {
+  id               String                      @id @default(uuid()) @db.Uuid
+  activityId       String                      @db.Uuid
+  activity         Activity                    @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  userId           String                      @db.Uuid
+  user             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state            ActivityParticipationState
+  waitlistPosition Int?
+  joinedAt         DateTime                    @default(now())
+  cancelledAt      DateTime?
+  updatedAt        DateTime                    @updatedAt
+
+  @@unique([activityId, userId])
+  @@index([userId, state])
+  @@index([activityId, state, waitlistPosition])
+}
+
+enum DirectMessageRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model UserFollow {
+  followerId  String   @db.Uuid
+  followingId String   @db.Uuid
+  follower    User     @relation("UserFollowsInitiated", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("UserFollowsReceived", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+  @@index([followingId, createdAt])
+}
+
+model UserWave {
+  id          String   @id @default(uuid()) @db.Uuid
+  senderId    String   @db.Uuid
+  recipientId String   @db.Uuid
+  sender      User     @relation("UserWavesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User     @relation("UserWavesReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([senderId, recipientId])
+  @@index([recipientId, createdAt])
+}
+
+model DirectMessageRequest {
+  id             String                      @id @default(uuid()) @db.Uuid
+  senderId       String                      @db.Uuid
+  recipientId    String                      @db.Uuid
+  sender         User                        @relation("MessageRequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient      User                        @relation("MessageRequestsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+  status         DirectMessageRequestStatus  @default(PENDING)
+  conversationId String?                     @db.Uuid
+  conversation   DirectConversation?         @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  respondedAt    DateTime?
+
+  @@unique([senderId, recipientId])
+  @@index([recipientId, status, createdAt])
+  @@index([senderId, status, createdAt])
+}
+
+model DirectConversation {
+  id                String   @id @default(uuid()) @db.Uuid
+  participantLowId  String   @db.Uuid
+  participantHighId String   @db.Uuid
+  participantLow    User     @relation("ConversationParticipantLow", fields: [participantLowId], references: [id], onDelete: Cascade)
+  participantHigh   User     @relation("ConversationParticipantHigh", fields: [participantHighId], references: [id], onDelete: Cascade)
+  lastMessageId     String?  @db.Uuid
+  lastMessageAt     DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  participants DirectConversationParticipant[]
+  messages     DirectMessage[]
+  requests     DirectMessageRequest[]
+
+  @@unique([participantLowId, participantHighId])
+  @@index([updatedAt, id])
+}
+
+model DirectConversationParticipant {
+  conversationId    String    @db.Uuid
+  userId            String    @db.Uuid
+  conversation      DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessageId String?   @db.Uuid
+  lastReadAt        DateTime?
+  joinedAt          DateTime  @default(now())
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model DirectMessage {
+  id             String             @id @default(uuid()) @db.Uuid
+  conversationId String             @db.Uuid
+  conversation   DirectConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  authorId       String             @db.Uuid
+  author         User               @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body           String
+  clientMessageId String?
+  createdAt      DateTime           @default(now())
+
+  @@unique([conversationId, authorId, clientMessageId])
+  @@index([conversationId, createdAt, id])
+}
+
+enum CommunityGroupPrivacy {
+  PUBLIC
+  PRIVATE_APPROVAL
+}
+
+enum CommunityGroupStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum CommunityGroupMeetupFrequency {
+  WEEKLY
+  ACTIVE_DAILY
+  BIWEEKLY
+}
+
+enum CommunityMembershipRole {
+  OWNER
+  MODERATOR
+  MEMBER
+}
+
+enum CommunityMembershipStatus {
+  PENDING
+  ACTIVE
+  DECLINED
+  REMOVED
+  LEFT
+}
+
+enum CommunityPostModerationState {
+  VISIBLE
+  REMOVED
+}
+
+model CommunityGroupCategory {
+  id        String           @id @db.Uuid
+  slug      String           @unique
+  label     String
+  sortOrder Int
+  groups    CommunityGroup[]
+}
+
+model CommunityGroup {
+  id               String                         @id @default(uuid()) @db.Uuid
+  ownerId          String                         @db.Uuid
+  owner            User                           @relation("CommunityGroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  name             String
+  description      String?
+  categoryId       String                         @db.Uuid
+  category         CommunityGroupCategory         @relation(fields: [categoryId], references: [id])
+  locationCity     String?
+  locationRegion   String?
+  privacy          CommunityGroupPrivacy
+  meetupFrequency  CommunityGroupMeetupFrequency?
+  memberCapacity   Int?
+  status           CommunityGroupStatus           @default(ACTIVE)
+  coverStorageKey  String?
+  coverContentType String?
+  createdAt        DateTime                       @default(now())
+  updatedAt        DateTime                       @updatedAt
+
+  tags         CommunityGroupTag[]
+  memberships  CommunityMembership[]
+  posts        CommunityPost[]
+  messages     CommunityGroupMessage[]
+  readStates   CommunityGroupReadState[]
+  activities   CommunityGroupActivity[]
+
+  @@index([status, privacy, createdAt])
+  @@index([categoryId, status])
+  @@index([locationCity, locationRegion])
+  @@index([ownerId, status])
+}
+
+model CommunityGroupTag {
+  groupId String         @db.Uuid
+  group   CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  tag     String
+
+  @@id([groupId, tag])
+  @@index([tag])
+}
+
+model CommunityMembership {
+  id          String                     @id @default(uuid()) @db.Uuid
+  groupId     String                     @db.Uuid
+  group       CommunityGroup             @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId      String                     @db.Uuid
+  user        User                       @relation("CommunityMembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  role        CommunityMembershipRole
+  status      CommunityMembershipStatus
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  respondedAt DateTime?
+  approverId  String?                    @db.Uuid
+  approver    User?                      @relation("CommunityMembershipApprover", fields: [approverId], references: [id], onDelete: SetNull)
+
+  @@unique([groupId, userId])
+  @@index([groupId, status])
+  @@index([userId, status])
+}
+
+model CommunityPost {
+  id           String                       @id @default(uuid()) @db.Uuid
+  groupId      String                       @db.Uuid
+  group        CommunityGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId     String                       @db.Uuid
+  author       User                         @relation("CommunityPostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body         String
+  activityId   String?                      @db.Uuid
+  activity     Activity?                    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  pinnedAt     DateTime?
+  pinnedById   String?                      @db.Uuid
+  pinnedBy     User?                        @relation("CommunityPostPinnedBy", fields: [pinnedById], references: [id], onDelete: SetNull)
+  moderation   CommunityPostModerationState @default(VISIBLE)
+  removedAt    DateTime?
+  removedById  String?                      @db.Uuid
+  removedBy    User?                        @relation("CommunityPostRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime                     @default(now())
+  updatedAt    DateTime                     @updatedAt
+
+  comments CommunityPostComment[]
+  likes    CommunityPostLike[]
+
+  @@index([groupId, moderation, pinnedAt, createdAt])
+  @@index([authorId, createdAt])
+}
+
+model CommunityPostComment {
+  id          String        @id @default(uuid()) @db.Uuid
+  postId      String        @db.Uuid
+  post        CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId    String        @db.Uuid
+  author      User          @relation("CommunityPostCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body        String
+  removedAt   DateTime?
+  removedById String?       @db.Uuid
+  removedBy   User?         @relation("CommunityPostCommentRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+
+  @@index([postId, createdAt])
+}
+
+model CommunityPostLike {
+  postId    String        @db.Uuid
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String        @db.Uuid
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@id([postId, userId])
+}
+
+model CommunityGroupMessage {
+  id              String         @id @default(uuid()) @db.Uuid
+  groupId         String         @db.Uuid
+  group           CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId        String         @db.Uuid
+  author          User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body            String
+  clientMessageId String?
+  createdAt       DateTime       @default(now())
+
+  @@unique([groupId, authorId, clientMessageId])
+  @@index([groupId, createdAt, id])
+}
+
+model CommunityGroupReadState {
+  groupId           String         @db.Uuid
+  group             CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId            String         @db.Uuid
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadMessageId String?        @db.Uuid
+  lastReadAt        DateTime?
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+model CommunityGroupActivity {
+  groupId      String         @db.Uuid
+  group        CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  activityId   String         @db.Uuid
+  activity     Activity       @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  attachedById String         @db.Uuid
+  attachedBy   User           @relation("CommunityGroupActivityAttacher", fields: [attachedById], references: [id], onDelete: Restrict)
+  attachedAt   DateTime       @default(now())
+
+  @@id([groupId, activityId])
+  @@index([activityId])
 }

@@ -67,6 +67,9 @@
 | I-C01 | Two parallel registers same email | Exactly one succeeds |
 | I-C02 | Two parallel refresh with same token | At most one wins; family revocation safe |
 | I-C03 | Password reset consume race | One consumption |
+| T005-P01 | Authenticated password change | Sessions revoked; re-login required |
+| T005-N01–T005-N03 | Password change auth/validation negatives | Wrong current, weak/same new, unauthenticated |
+| T005-C01 | Concurrent password change | One 200, one 409 |
 | I-C04 | Concurrent session `logout-all` + refresh | Eventual deny |
 
 **Gate:** mark I-C* as `NOT VERIFIED` until run against native PostgreSQL with evidence in CI logs.

@@ -61,6 +61,17 @@ export const passwordResetConfirmSchema = z
   })
   .strict();
 
+export const passwordChangeBodySchema = z
+  .object({
+    currentPassword: z.string().min(1).max(128),
+    newPassword: passwordFieldSchema,
+  })
+  .strict()
+  .refine((data) => data.currentPassword !== data.newPassword, {
+    message: "New password must differ from current password",
+    path: ["newPassword"],
+  });
+
 export const REQUIRED_CONSENT_TYPES = ["TERMS", "PRIVACY", "AGE_ATTESTATION"] as const;
 
 export function validateRequiredConsents(

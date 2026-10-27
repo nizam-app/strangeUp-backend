@@ -1,13 +1,33 @@
 ---
-description: StrangeUp backend architecture and change controls
+description: StrangeUp backend architecture, scope boundary, and change controls
 alwaysApply: true
 ---
 
-- Inspect existing repo / docs before writing code.
-- Stack: TypeScript + Node.js + Express + Prisma + PostgreSQL; Flutter consumes versioned REST; no framework substitutions.
-- Follow AGENTS.md, documented accepted ADRs (including ADR-004 identity Phase 1), and approved PRD; unresolved product flows must NOT be invented.
+## Scope: backend only
+
+- This repo is **backend development only** (TypeScript, Node.js, Express, Prisma, PostgreSQL).
+- Flutter is a **separate repository** and team. Never request Flutter repo access, edit Flutter code, or implement mobile UI.
+- `FLUTTER_DEVELOPER_HANDOFF.md` is the **external integration contract** for the Flutter developer — not a task to implement Flutter here.
+
+## Before coding
+
+- Inspect existing repo and docs (`AGENTS.md`, `docs/plans/STATUS.md`, `docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`, approved ADRs including ADR-004).
+- Figma/PDFs: evidence for **backend** behavior only; unresolved product flows must NOT be invented.
+- Deferred integrations (Stripe, KYC vendor, production ESP, OAuth/phone OTP) stay documented and unimplemented until explicitly authorized.
+
+## Backend feature checklist
+
+Figma screens → approved rules → schema/policies → routes/services → tests (unit, integration, authz, negative paths) → `CURRENT_APIS.md` + `FLUTTER_DEVELOPER_HANDOFF.md` + OpenAPI + `STATUS.md` + `ACTIVE_SCOPE_AND_DEFERRALS.md`.
+
+## Stack and structure
+
+- Versioned REST for mobile clients; no framework substitutions.
+- Modular monolith, bounded modules, explicit API DTOs, server-side resource-level authorization.
 - When adding, changing, or removing any HTTP API, update `docs/api/CURRENT_APIS.md` and `docs/api/FLUTTER_DEVELOPER_HANDOFF.md` in the same PR/commit as the route change.
-- Modular monolith, bounded modules, explicit API DTOs and server-side resource-level authorization.
+
+## Safety
+
 - Validate inputs, never emit sensitive data, no secrets in source/logs, no production destructive operations.
 - Avoid broad edits or premature tables/packages. Separate implementation and verification status.
-- After each task report files, packages, migrations, commands/tests actually executed, results, gaps and next bounded task.
+- No commit, push, or unapproved behavior without explicit owner authorization.
+- After each task: report files, packages, migrations, commands/tests executed, results, gaps, and next bounded **backend** task.

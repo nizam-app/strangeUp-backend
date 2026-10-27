@@ -1,0 +1,155 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Social Connections API
+  version: 0.1.0
+  description: >
+    Task 011 follow graph, waves, message requests, and 1:1 text conversations.
+    Not end-to-end encrypted. No presence, group chat, or device-delivery status.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/users/{userId}/follow:
+    post:
+      summary: Follow a visible user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200": { description: Following }
+        "400": { description: Self target }
+        "404": { description: Hidden, blocked, or missing }
+    delete:
+      summary: Unfollow
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200": { description: Not following }
+  /v1/users/{userId}/wave:
+    post:
+      summary: Send an idempotent wave
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200": { description: Waved }
+  /v1/me/following:
+    get:
+      summary: People I follow
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Preview list }
+  /v1/me/followers:
+    get:
+      summary: People who follow me
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Preview list }
+  /v1/me/waves:
+    get:
+      summary: Incoming waves
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Wave inbox }
+  /v1/me/message-requests:
+    get:
+      summary: Inbox or sent requests
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: box
+          schema: { type: string, enum: [inbox, sent] }
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING, ACCEPTED, DECLINED] }
+      responses:
+        "200": { description: Requests }
+    post:
+      summary: Create a pending message request (no text)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [targetUserId]
+              properties:
+                targetUserId: { type: string, format: uuid }
+      responses:
+        "201": { description: Created }
+        "200": { description: Existing pending or accepted }
+        "409": { description: Previously declined }
+  /v1/me/message-requests/{requestId}/accept:
+    post:
+      summary: Recipient accepts and opens one conversation
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Accepted }
+        "404": { description: Not the recipient }
+  /v1/me/message-requests/{requestId}/decline:
+    post:
+      summary: Recipient declines
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Declined }
+  /v1/me/conversations:
+    get:
+      summary: Self 1:1 conversation list
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 80 }
+      responses:
+        "200": { description: Conversations with unreadCount }
+  /v1/me/conversations/{conversationId}/messages:
+    get:
+      summary: Participant message page
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Chronological page }
+        "404": { description: Not a participant or blocked }
+    post:
+      summary: Send text after accepted consent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body: { type: string, minLength: 1, maxLength: 2000 }
+                clientMessageId: { type: string, format: uuid }
+      responses:
+        "201": { description: Message stored }
+  /v1/me/conversations/{conversationId}/read:
+    post:
+      summary: Advance own read watermark
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                messageId: { type: string, format: uuid }
+      responses:
+        "200": { description: unreadCount }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UserId:
+      in: path
+      name: userId
+      required: true
+      schema: { type: string, format: uuid }

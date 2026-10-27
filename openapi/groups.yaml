@@ -1,0 +1,295 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Groups & Communities API
+  version: 0.1.0
+  description: >
+    Task 012 group discovery, membership, posts, group chat, and linked activities.
+    No verified-community badge, nearby distance, stories, polls, photo posts,
+    E2EE, or presence. Group membership is not activity RSVP or KYC approval.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/group-categories:
+    get:
+      summary: Managed group category catalog
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Category slugs and labels }
+  /v1/groups:
+    get:
+      summary: Discover ACTIVE groups (public and private summaries)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: category
+          schema: { type: string, enum: [sports, fitness, outdoor, social, hobbies] }
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: region
+          schema: { type: string }
+        - in: query
+          name: privacy
+          schema: { type: string, enum: [PUBLIC, PRIVATE_APPROVAL] }
+        - in: query
+          name: tag
+          schema: { type: string }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        "200": { description: Group summaries }
+  /v1/groups/{groupId}:
+    get:
+      summary: Public-safe group header and viewer membership
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200": { description: Group detail }
+        "404": { description: Hidden or missing }
+  /v1/groups/{groupId}/join:
+    post:
+      summary: Join PUBLIC immediately or request PRIVATE_APPROVAL
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200": { description: Membership or pending request }
+        "409": { description: At capacity }
+    delete:
+      summary: Leave or cancel own request (owner must transfer first)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200": { description: Left }
+        "403": { description: Last owner }
+  /v1/groups/{groupId}/members:
+    get:
+      summary: Active members (member-only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200": { description: D-03-safe member previews }
+        "404": { description: Non-member or missing }
+  /v1/groups/{groupId}/posts:
+    get:
+      summary: Member-only posts, pinned first
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200": { description: Posts }
+    post:
+      summary: Create a text post
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 2000 }
+                activityId: { type: string, format: uuid }
+      responses:
+        "201": { description: Created }
+  /v1/groups/{groupId}/posts/{postId}:
+    patch:
+      summary: Author edit
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Updated }
+    delete:
+      summary: Author or moderator non-destructive removal
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Removed }
+  /v1/groups/{groupId}/posts/{postId}/pin:
+    post:
+      summary: Owner/moderator pin or unpin
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pinned]
+              properties:
+                pinned: { type: boolean }
+      responses:
+        "200": { description: Pin state }
+  /v1/groups/{groupId}/posts/{postId}/comments:
+    get:
+      summary: Member-only comments
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Comments }
+    post:
+      summary: Member-only comment
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Created }
+  /v1/groups/{groupId}/posts/{postId}/like:
+    put:
+      summary: Idempotent like
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Liked }
+    delete:
+      summary: Idempotent unlike
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Unliked }
+  /v1/groups/{groupId}/chat/messages:
+    get:
+      summary: Member-only group chat page
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Messages }
+    post:
+      summary: Send text; clientMessageId is idempotent
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Sent }
+  /v1/groups/{groupId}/chat/read:
+    post:
+      summary: Monotonic read watermark
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: unreadCount }
+  /v1/groups/{groupId}/activities:
+    get:
+      summary: Associated published public activities (Task 010 DTO)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Activity cards without meeting instructions }
+  /v1/groups/{groupId}/cover:
+    get:
+      summary: Cover bytes when authorized
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Image bytes }
+        "404": { description: Missing, private, or unauthorized }
+  /v1/me/groups:
+    get:
+      summary: My ACTIVE and PENDING memberships
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: My groups }
+    post:
+      summary: Create group and OWNER membership atomically
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Created }
+  /v1/me/groups/{groupId}:
+    patch:
+      summary: Owner/moderator allowlisted edits
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Updated }
+  /v1/me/groups/{groupId}/manage:
+    get:
+      summary: Owner/moderator management summary
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Manage DTO }
+  /v1/me/groups/{groupId}/cover:
+    post:
+      summary: Multipart field cover (JPEG/PNG/WebP, 5MB)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Updated }
+    delete:
+      summary: Remove cover
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Deleted }
+  /v1/me/groups/{groupId}/join-requests:
+    get:
+      summary: Pending requests
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Requests }
+  /v1/me/groups/{groupId}/join-requests/{memberId}/approve:
+    post:
+      summary: Approve pending request
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Active member }
+        "409": { description: Capacity or invalid state }
+  /v1/me/groups/{groupId}/join-requests/{memberId}/decline:
+    post:
+      summary: Decline pending request
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Declined }
+  /v1/me/groups/{groupId}/members/{userId}/remove:
+    post:
+      summary: Moderate an active member
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Removed }
+  /v1/me/groups/{groupId}/members/{userId}/role:
+    post:
+      summary: Owner-only MODERATOR or MEMBER
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Role updated }
+  /v1/me/groups/{groupId}/transfer-ownership:
+    post:
+      summary: Transfer to an ACTIVE member
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Previous owner is now MEMBER }
+  /v1/me/groups/{groupId}/archive:
+    post:
+      summary: Owner-only non-destructive archive
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Archived }
+  /v1/me/groups/{groupId}/activities:
+    post:
+      summary: Attach an activity the caller hosts
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Attached }
+  /v1/me/groups/{groupId}/activities/{activityId}:
+    delete:
+      summary: Detach an activity the caller hosts
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Detached }
+  /v1/me/group-chats:
+    get:
+      summary: Current member group-chat previews
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Chat list for a future unified inbox }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    GroupId:
+      in: path
+      name: groupId
+      required: true
+      schema: { type: string, format: uuid }

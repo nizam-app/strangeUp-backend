@@ -36,7 +36,24 @@ const envSchema = z
     AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP: z.coerce.number().int().min(1).max(1000).default(10),
     AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL: z.coerce.number().int().min(1).max(1000).default(5),
     AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER: z.coerce.number().int().min(1).max(1000).default(5),
+    AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP: z.coerce.number().int().min(1).max(1000).default(10),
+    AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER: z.coerce.number().int().min(1).max(1000).default(5),
     PUBLIC_APP_BASE_URL: z.string().url().optional(),
+    PROFILE_UPLOAD_DIR: z.string().min(1).default(".data/profile-media"),
+    ACTIVITY_UPLOAD_DIR: z.string().min(1).default(".data/activity-media"),
+    GROUP_UPLOAD_DIR: z.string().min(1).default(".data/group-media"),
+    KYC_PROVIDER_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    SOCIAL_RATE_LIMIT_FOLLOW_PER_USER: z.coerce.number().int().min(1).max(1000).default(20),
+    SOCIAL_RATE_LIMIT_WAVE_PER_USER: z.coerce.number().int().min(1).max(1000).default(10),
+    SOCIAL_RATE_LIMIT_REQUEST_PER_USER: z.coerce.number().int().min(1).max(1000).default(10),
+    SOCIAL_RATE_LIMIT_MESSAGE_PER_USER: z.coerce.number().int().min(1).max(1000).default(40),
+    GROUP_RATE_LIMIT_CREATE_PER_USER: z.coerce.number().int().min(1).max(1000).default(10),
+    GROUP_RATE_LIMIT_JOIN_PER_USER: z.coerce.number().int().min(1).max(1000).default(20),
+    GROUP_RATE_LIMIT_POST_PER_USER: z.coerce.number().int().min(1).max(1000).default(40),
+    GROUP_RATE_LIMIT_MESSAGE_PER_USER: z.coerce.number().int().min(1).max(1000).default(40),
   })
   .strict();
 
@@ -58,7 +75,21 @@ const KNOWN_ENV_KEYS = [
   "AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP",
   "AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL",
   "AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER",
+  "AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP",
+  "AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER",
   "PUBLIC_APP_BASE_URL",
+  "PROFILE_UPLOAD_DIR",
+  "ACTIVITY_UPLOAD_DIR",
+  "GROUP_UPLOAD_DIR",
+  "KYC_PROVIDER_ENABLED",
+  "SOCIAL_RATE_LIMIT_FOLLOW_PER_USER",
+  "SOCIAL_RATE_LIMIT_WAVE_PER_USER",
+  "SOCIAL_RATE_LIMIT_REQUEST_PER_USER",
+  "SOCIAL_RATE_LIMIT_MESSAGE_PER_USER",
+  "GROUP_RATE_LIMIT_CREATE_PER_USER",
+  "GROUP_RATE_LIMIT_JOIN_PER_USER",
+  "GROUP_RATE_LIMIT_POST_PER_USER",
+  "GROUP_RATE_LIMIT_MESSAGE_PER_USER",
 ] as const;
 
 export type AuthEnv = {
@@ -72,6 +103,8 @@ export type AuthEnv = {
   AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP: number;
   AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL: number;
   AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER: number;
+  AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP: number;
+  AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER: number;
   PUBLIC_APP_BASE_URL?: string;
 };
 
@@ -152,6 +185,8 @@ export function loadEnv(raw: NodeJS.ProcessEnv = process.env): AppEnv {
       AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP: base.AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP,
       AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL: base.AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL,
       AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER: base.AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER,
+      AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP: base.AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP,
+      AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER: base.AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER,
       PUBLIC_APP_BASE_URL: base.PUBLIC_APP_BASE_URL,
     },
   };

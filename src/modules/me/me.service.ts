@@ -1,3 +1,4 @@
+import { Prisma } from "../../../generated/prisma/client.js";
 import type { ConsentType, Profile, User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
@@ -7,6 +8,7 @@ import {
   hasFullAccountAccess,
   toPolicyActor,
 } from "../policy/account-policy.js";
+import { normalizeUsername } from "./username.js";
 import type { ProfilePatchInput } from "./me.validation.js";
 
 export type AccountDto = {
@@ -26,8 +28,14 @@ export type ProfileDto = {
   firstName: string | null;
   lastName: string | null;
   displayName: string | null;
+  username: string | null;
   bio: string | null;
   scheduleTimeZone: string | null;
+  profileVisibility: Profile["profileVisibility"];
+  locationCity: string | null;
+  locationRegion: string | null;
+  hasAvatar: boolean;
+  avatarUpdatedAt: string | null;
   birthDate: string;
 };
 
@@ -44,8 +52,14 @@ function toProfileDto(profile: Profile): ProfileDto {
     firstName: profile.firstName,
     lastName: profile.lastName,
     displayName: profile.displayName,
+    username: profile.username,
     bio: profile.bio,
     scheduleTimeZone: profile.scheduleTimeZone,
+    profileVisibility: profile.profileVisibility,
+    locationCity: profile.locationCity,
+    locationRegion: profile.locationRegion,
+    hasAvatar: profile.avatarStorageKey !== null,
+    avatarUpdatedAt: profile.avatarUpdatedAt?.toISOString() ?? null,
     birthDate: formatBirthDate(profile),
   };
 }
@@ -106,7 +120,18 @@ export class MeService {
     }
 
     const data: Partial<
-      Pick<Profile, "firstName" | "lastName" | "displayName" | "bio" | "scheduleTimeZone">
+      Pick<
+        Profile,
+        | "firstName"
+        | "lastName"
+        | "displayName"
+        | "username"
+        | "bio"
+        | "scheduleTimeZone"
+        | "profileVisibility"
+        | "locationCity"
+        | "locationRegion"
+      >
     > = {};
     if (input.firstName !== undefined) {
       data.firstName = input.firstName;
@@ -117,17 +142,41 @@ export class MeService {
     if (input.displayName !== undefined) {
       data.displayName = input.displayName;
     }
+    if (input.username !== undefined) {
+      data.username = input.username === null ? null : normalizeUsername(input.username);
+    }
     if (input.bio !== undefined) {
       data.bio = input.bio;
     }
     if (input.scheduleTimeZone !== undefined) {
       data.scheduleTimeZone = input.scheduleTimeZone;
     }
+    if (input.profileVisibility !== undefined) {
+      data.profileVisibility = input.profileVisibility;
+    }
+    if (input.locationCity !== undefined) {
+      data.locationCity = input.locationCity;
+    }
+    if (input.locationRegion !== undefined) {
+      data.locationRegion = input.locationRegion;
+    }
 
-    const profile = await this.db.profile.update({
-      where: { userId: user.id },
-      data,
-    });
-    return toProfileDto(profile);
+    try {
+      const profile = await this.db.profile.update({
+        where: { userId: user.id },
+        data,
+      });
+      return toProfileDto(profile);
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002" &&
+        input.username !== undefined &&
+        input.username !== null
+      ) {
+        throw new AppError("CONFLICT", "Username is already taken", 409);
+      }
+      throw err;
+    }
   }
 }

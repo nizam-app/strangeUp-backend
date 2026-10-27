@@ -378,6 +378,59 @@ export class AuthService {
     }
   }
 
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      include: { passwordCredential: true },
+    });
+
+    if (!user?.passwordCredential || isUserAuthBlocked(user)) {
+      throw new AppError("AUTH_FORBIDDEN", "Account is not available", 403);
+    }
+
+    const storedHash = user.passwordCredential.passwordHash;
+    const passwordOk = await verifyPassword(currentPassword, storedHash);
+    if (!passwordOk) {
+      throw new AppError("AUTH_INVALID_CREDENTIALS", "Invalid current password", 401);
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+    const now = new Date();
+
+    const applied = await this.db.$transaction(async (tx) => {
+      const updated = await tx.passwordCredential.updateMany({
+        where: {
+          userId,
+          passwordHash: storedHash,
+        },
+        data: {
+          passwordHash,
+          passwordChangedAt: now,
+          mustReauthAfter: now,
+        },
+      });
+      if (updated.count !== 1) {
+        return false;
+      }
+      await tx.authChallenge.deleteMany({
+        where: { userId, type: "PASSWORD_RESET", consumedAt: null },
+      });
+      await tx.session.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return true;
+    });
+
+    if (!applied) {
+      throw new AppError("CONFLICT", "Password could not be updated", 409);
+    }
+  }
+
   async confirmEmailVerification(token: string): Promise<{ accountStatus: AccountStatus }> {
     const tokenHash = hashSha256(token);
     const challenge = await this.db.authChallenge.findFirst({

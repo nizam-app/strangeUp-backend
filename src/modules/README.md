@@ -1,5 +1,6 @@
 # Domain modules
 
-Product domain modules (identity, activities, messaging, etc.) will live here after approved Prisma models and product rules are signed off.
+Implemented product modules: `auth`, `me`, `interests`, `favorite-activities`, `profile-media`, `blocks`, `discovery`, `activities`, `social`, `groups`, `policy`.
 
-Task 001 intentionally leaves this directory empty of business logic.
+Task 010 activities live in `activities/` (catalog, host lifecycle, discovery, RSVP/waitlist, meeting privacy).
+Task 012 groups live in `groups/` (catalog, membership, posts, chat, activity links).

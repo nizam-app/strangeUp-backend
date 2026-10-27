@@ -22,7 +22,8 @@
     "generated/**/*.ts",
     "tests/**/*.ts",
     "vitest.config.ts",
-    "vitest.integration.config.ts"
+    "vitest.integration.config.ts",
+    "scripts/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

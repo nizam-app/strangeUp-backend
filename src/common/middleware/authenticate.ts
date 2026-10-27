@@ -5,6 +5,7 @@ import type { AuthService } from "../../modules/auth/auth.service.js";
 export type AuthenticatedRequest = Request & {
   authUser?: User;
   authSessionId?: string;
+  file?: Express.Multer.File;
 };
 
 export function createAuthenticateMiddleware(authService: AuthService): RequestHandler {

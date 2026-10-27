@@ -1,0 +1,245 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Activities API
+  version: 0.1.0
+  description: >
+    Task 010 activities and meetups. Public list/detail omit meeting instructions.
+    Real-world publish and confirmed RSVP require trusted KYC; production fails closed
+    until KYC_PROVIDER_ENABLED is true.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/activity-categories:
+    get:
+      summary: List activity categories
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Catalog slugs and labels }
+        "401": { description: Unauthorized }
+        "403": { description: Account not eligible }
+  /v1/activities:
+    get:
+      summary: Discover published public upcoming activities
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: category
+          schema:
+            type: string
+            enum: [biking, padel-tennis, running, swimming, fitness]
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: region
+          schema: { type: string }
+        - in: query
+          name: mode
+          schema: { type: string, enum: [IN_PERSON, VIRTUAL, HYBRID] }
+        - in: query
+          name: startsAfter
+          schema: { type: string, format: date-time }
+        - in: query
+          name: startsBefore
+          schema: { type: string, format: date-time }
+      responses:
+        "200": { description: Public activity cards }
+  /v1/activities/{activityId}:
+    get:
+      summary: Public-safe activity detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Public detail }
+        "404": { description: Hidden, blocked, or missing }
+  /v1/activities/{activityId}/cover:
+    get:
+      summary: Public cover bytes
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Re-encoded image bytes }
+        "404": { description: No cover or not visible }
+  /v1/activities/{activityId}/meeting:
+    get:
+      summary: Private meeting details
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Host or confirmed eligible participant }
+        "403": { description: Not eligible or KYC required }
+        "404": { description: Hidden or missing }
+  /v1/activities/{activityId}/rsvp:
+    post:
+      summary: Join or waitlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Confirmed or waitlisted }
+        "403": { description: IDENTITY_VERIFICATION_REQUIRED or not joinable }
+        "409": { description: At capacity }
+    delete:
+      summary: Leave activity
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Left; may hold waitlist }
+  /v1/me/activities:
+    get:
+      summary: Host-owned activities
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Host DTOs including private meeting fields }
+    post:
+      summary: Create draft
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActivityRequest"
+      responses:
+        "201": { description: Draft created }
+  /v1/me/activities/{activityId}:
+    get:
+      summary: Host activity detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Host DTO }
+        "404": { description: Not owned }
+    patch:
+      summary: Host allowlisted update
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchActivityRequest"
+      responses:
+        "200": { description: Updated }
+        "409": { description: Schedule or capacity conflict }
+  /v1/me/activities/{activityId}/publish:
+    post:
+      summary: Publish draft
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Published }
+        "403": { description: IDENTITY_VERIFICATION_REQUIRED }
+  /v1/me/activities/{activityId}/cancel:
+    post:
+      summary: Cancel activity
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Cancelled }
+  /v1/me/activities/{activityId}/cover:
+    post:
+      summary: Upload cover (multipart field name cover)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Cover replaced }
+    get:
+      summary: Host cover bytes
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Image bytes }
+    delete:
+      summary: Remove cover
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200": { description: Cover cleared }
+  /v1/me/activity-rsvps:
+    get:
+      summary: Own confirmed and waitlisted activities
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Self RSVP summaries }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ActivityId:
+      in: path
+      name: activityId
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    CreateActivityRequest:
+      type: object
+      additionalProperties: false
+      required: [title, category, startsAt, endsAt, timeZone, mode, capacity]
+      properties:
+        title: { type: string, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        category:
+          type: string
+          enum: [biking, padel-tennis, running, swimming, fitness]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        timeZone: { type: string, description: IANA time zone }
+        mode: { type: string, enum: [IN_PERSON, VIRTUAL, HYBRID] }
+        audience: { type: string, enum: [PUBLIC, FOLLOWERS_ONLY] }
+        venueName: { type: string, maxLength: 120 }
+        locationCity: { type: string }
+        locationRegion: { type: string }
+        meetingInstructions: { type: string, maxLength: 500 }
+        virtualMeetingDetails: { type: string, maxLength: 500 }
+        skillNotes: { type: string, maxLength: 200 }
+        gearNotes: { type: string, maxLength: 200 }
+        capacity: { type: integer, minimum: 1, maximum: 500 }
+        waitlistEnabled: { type: boolean }
+    PatchActivityRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, maxLength: 80 }
+        description: { type: string, nullable: true, maxLength: 500 }
+        category:
+          type: string
+          enum: [biking, padel-tennis, running, swimming, fitness]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        timeZone: { type: string }
+        mode: { type: string, enum: [IN_PERSON, VIRTUAL, HYBRID] }
+        audience: { type: string, enum: [PUBLIC, FOLLOWERS_ONLY] }
+        venueName: { type: string, nullable: true }
+        locationCity: { type: string, nullable: true }
+        locationRegion: { type: string, nullable: true }
+        meetingInstructions: { type: string, nullable: true }
+        virtualMeetingDetails: { type: string, nullable: true }
+        skillNotes: { type: string, nullable: true }
+        gearNotes: { type: string, nullable: true }
+        capacity: { type: integer, minimum: 1, maximum: 500 }
+        waitlistEnabled: { type: boolean }

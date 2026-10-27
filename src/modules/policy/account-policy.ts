@@ -44,6 +44,11 @@ export function canAccessAccount(actor: PolicyActor | null, userId: string): boo
   return actor.accountStatus === "ACTIVE" || actor.accountStatus === "PENDING_VERIFICATION";
 }
 
+/** Authenticated password change (settings/security); same eligibility as own account read. */
+export function canChangePassword(actor: PolicyActor | null, userId: string): boolean {
+  return canAccessAccount(actor, userId);
+}
+
 export function canEditProfile(actor: PolicyActor | null, userId: string): boolean {
   if (!canAccessAccount(actor, userId)) {
     return false;
@@ -65,7 +70,10 @@ export function canAccessOwnVerificationStatus(actor: PolicyActor | null, userId
   return actor !== null && actor.userId === userId && !isAccountTerminalBlocked(actor);
 }
 
-/** D-03 not approved — deny all cross-user interaction. */
+/**
+ * Generic cross-user interact stub (no visibility/block context).
+ * Follow/Wave/DM use `canInitiateSocialContact` in `social-policy.ts`.
+ */
 export function canInteractWithUser(_actor: PolicyActor | null, _targetUserId: string): boolean {
   return false;
 }

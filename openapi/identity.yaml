@@ -172,6 +172,256 @@ paths:
           description: Validation error
         "403":
           description: Cannot edit in current account state
+        "409":
+          description: Username already taken (CONFLICT)
+  /v1/me/favorite-activities:
+    get:
+      summary: Get own favorite activity preference pins
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Ordered preference list (may be empty)
+        "401":
+          description: Unauthorized
+        "403":
+          description: Account unavailable
+    put:
+      summary: Replace own favorite activity preference pins
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceFavoriteActivitiesRequest"
+      responses:
+        "200":
+          description: Updated list
+        "400":
+          description: Validation error
+        "403":
+          description: Cannot edit in current account state
+  /v1/me/profile/avatar:
+    get:
+      summary: Get own profile avatar bytes
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Image body
+          content:
+            image/*:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No avatar
+    post:
+      summary: Upload or replace own profile avatar
+      description: >
+        JPEG, PNG, or WebP only; max 5 MiB upload. Server validates decoded image bytes
+        (not filename/MIME), re-encodes without EXIF/GPS, and rejects SVG/corrupt files.
+        Local disk storage in development only (PROFILE_UPLOAD_DIR).
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Avatar metadata
+        "400":
+          description: Validation error (invalid or unsupported image)
+    delete:
+      summary: Delete own profile avatar
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Cleared avatar metadata
+  /v1/me/blocks:
+    get:
+      summary: List users blocked by the authenticated account
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200":
+          description: Block list (IDs and timestamps only)
+        "403":
+          description: Viewer not eligible for discovery features
+    post:
+      summary: Block another user
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockUserRequest"
+      responses:
+        "200":
+          description: Block recorded (idempotent)
+        "400":
+          description: Validation error (e.g. self-block)
+        "404":
+          description: Target not found
+  /v1/me/blocks/{targetUserId}:
+    delete:
+      summary: Unblock a user
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: targetUserId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Unblock applied (idempotent)
+  /v1/discover/people:
+    get:
+      summary: Paginated list of discoverable people (authenticated only)
+      description: >
+        Non-geospatial people discovery. Respects profile visibility, KYC viewer rules,
+        and bidirectional blocks. Does not expose hidden account counts.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: q
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: city
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: region
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: interest
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public profile previews
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Viewer not eligible
+  /v1/users/{userId}:
+    get:
+      summary: Public profile for another member
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Public profile DTO
+        "401":
+          description: Unauthorized
+        "403":
+          description: Viewer not eligible
+        "404":
+          description: Not found (hidden, blocked, or nonexistent)
+  /v1/users/{userId}/avatar:
+    get:
+      summary: Public profile avatar bytes (authorized viewers only)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Image body
+        "401":
+          description: Unauthorized
+        "403":
+          description: Viewer not eligible
+        "404":
+          description: Not found
+  /v1/interests:
+    get:
+      summary: List canonical interest catalog (metadata only)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Ordered catalog slug/label pairs
+        "401":
+          description: Unauthorized
+        "403":
+          description: Account unavailable
+  /v1/me/interests:
+    get:
+      summary: Get own selected interests
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Selected interests (catalog order); empty array if none
+        "401":
+          description: Unauthorized
+        "403":
+          description: Account unavailable
+    put:
+      summary: Replace own selected interests (catalog slugs only)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceInterestsRequest"
+      responses:
+        "200":
+          description: Updated selection (request order)
+        "400":
+          description: Validation error
+        "401":
+          description: Unauthorized
+        "403":
+          description: Cannot edit in current account state
+  /v1/me/password-change:
+    post:
+      summary: Change password while authenticated (settings/security)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordChangeRequest"
+      responses:
+        "200":
+          description: Password updated; all sessions revoked
+        "400":
+          description: Validation error
+        "401":
+          description: Invalid current password or unauthorized
+        "403":
+          description: Account unavailable
+        "409":
+          description: Concurrent password update conflict
+        "429":
+          description: Rate limited
 components:
   securitySchemes:
     bearerAuth:
@@ -208,6 +458,31 @@ components:
               version:
                 type: string
                 description: Client-supplied until counsel publishes canonical IDs (release blocker)
+    ProfileDto:
+      type: object
+      properties:
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        displayName: { type: string, nullable: true }
+        username:
+          type: string
+          nullable: true
+          minLength: 3
+          maxLength: 30
+          pattern: "^[a-z0-9_]+$"
+        bio: { type: string, nullable: true }
+        scheduleTimeZone: { type: string, nullable: true }
+        profileVisibility:
+          type: string
+          enum: [EVERYONE, VERIFIED_USERS_ONLY]
+          description: New profiles default VERIFIED_USERS_ONLY; public read enforcement via Task 009 discovery APIs
+        locationCity: { type: string, nullable: true }
+        locationRegion: { type: string, nullable: true }
+        hasAvatar: { type: boolean }
+        avatarUpdatedAt: { type: string, format: date-time, nullable: true }
+        birthDate:
+          type: string
+          description: YYYY-MM-DD (read-only)
     ProfilePatchRequest:
       type: object
       additionalProperties: false
@@ -215,7 +490,151 @@ components:
         firstName: { type: string, maxLength: 80 }
         lastName: { type: string, maxLength: 80 }
         displayName: { type: string, maxLength: 120 }
-        bio: { type: string, maxLength: 500 }
+        username:
+          oneOf:
+            - type: string
+              minLength: 3
+              maxLength: 30
+              pattern: "^[a-z0-9_]+$"
+            - type: "null"
+          description: Optional handle; null clears; omitted = no change
+        bio:
+          type: string
+          maxLength: 300
+          description: New writes max 300 chars; legacy stored bios may exceed on GET until user edits
         scheduleTimeZone:
           type: string
           description: IANA time zone identifier
+        profileVisibility:
+          type: string
+          enum: [EVERYONE, VERIFIED_USERS_ONLY]
+          description: New profiles default VERIFIED_USERS_ONLY unless user PATCHes EVERYONE
+        locationCity:
+          oneOf:
+            - type: string
+              maxLength: 80
+            - type: "null"
+        locationRegion:
+          oneOf:
+            - type: string
+              maxLength: 80
+            - type: "null"
+    FavoriteActivityItem:
+      type: object
+      additionalProperties: false
+      required: [title, skillLevel, cadence]
+      properties:
+        title: { type: string, maxLength: 80 }
+        skillLevel:
+          type: string
+          enum: [BEGINNER, INTERMEDIATE, ADVANCED]
+        cadence:
+          type: string
+          enum: [WEEKLY, CASUAL]
+        scheduleNote: { type: string, maxLength: 120 }
+        placeLabel: { type: string, maxLength: 120 }
+    ReplaceFavoriteActivitiesRequest:
+      type: object
+      additionalProperties: false
+      required: [favoriteActivities]
+      properties:
+        favoriteActivities:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/FavoriteActivityItem"
+    InterestItem:
+      type: object
+      required: [slug, label]
+      properties:
+        slug:
+          type: string
+          enum:
+            - biking
+            - fitness
+            - outdoor
+            - social
+            - sports
+            - swimming
+            - hiking
+            - travel
+            - music
+            - food
+        label:
+          type: string
+    InterestsPayload:
+      type: object
+      required: [interests]
+      properties:
+        interests:
+          type: array
+          maxItems: 10
+          items:
+            $ref: "#/components/schemas/InterestItem"
+    ReplaceInterestsRequest:
+      type: object
+      additionalProperties: false
+      required: [interests]
+      properties:
+        interests:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+              - biking
+              - fitness
+              - outdoor
+              - social
+              - sports
+              - swimming
+              - hiking
+              - travel
+              - music
+              - food
+    PasswordChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 128 }
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Must include a letter and a number; must differ from currentPassword
+    BlockUserRequest:
+      type: object
+      additionalProperties: false
+      required: [targetUserId]
+      properties:
+        targetUserId:
+          type: string
+          format: uuid
+    PublicProfilePreviewDto:
+      type: object
+      required: [userId, hasAvatar]
+      properties:
+        userId: { type: string, format: uuid }
+        displayName: { type: string, nullable: true }
+        username: { type: string, nullable: true }
+        hasAvatar: { type: boolean }
+        locationCity: { type: string, nullable: true }
+        locationRegion: { type: string, nullable: true }
+    PublicProfileDto:
+      allOf:
+        - $ref: "#/components/schemas/PublicProfilePreviewDto"
+        - type: object
+          required: [memberSince, interests]
+          properties:
+            bio: { type: string, nullable: true }
+            memberSince: { type: string, format: date-time }
+            interests:
+              type: array
+              items:
+                $ref: "#/components/schemas/InterestItem"
+            followerCount: { type: integer, minimum: 0 }
+            followingCount: { type: integer, minimum: 0 }
+            viewerFollows: { type: boolean }
+            conversationId: { type: string, format: uuid, nullable: true }

@@ -8,7 +8,8 @@ export type AppErrorCode =
   | "AUTH_FORBIDDEN"
   | "AUTH_CHALLENGE_EXPIRED"
   | "AUTH_RATE_LIMITED"
-  | "CONFLICT";
+  | "CONFLICT"
+  | "IDENTITY_VERIFICATION_REQUIRED";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;

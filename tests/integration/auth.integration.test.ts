@@ -88,6 +88,7 @@ describeAuth("integration: auth flows", () => {
         "RegisterIdempotency",
         "AuthChallenge",
         "ConsentRecord",
+        "UserInterest",
         "Session",
         "PasswordCredential",
         "Profile",

@@ -16,6 +16,9 @@ Thumbs.db
 # Prisma local dev state
 .prisma/
 
+# Local profile media (dev avatar uploads)
+.data/
+
 # Editor / agent skill artifacts from tooling
 .agents/
 .claude/
