@@ -3,7 +3,7 @@ import type { AppEnv } from "../../config/env.js";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import { LocalActivityCoverStorage } from "./activity-cover.storage.js";
+import { createAppMediaStorages } from "../../infrastructure/media-storage/create-media-storages.js";
 import { ActivityHostService } from "./activity-host.service.js";
 import { ActivityRsvpService } from "./activity-rsvp.service.js";
 import { ActivityService } from "./activity.service.js";
@@ -21,9 +21,9 @@ export function createActivitiesControllers(deps: { db: DatabaseClient; env: App
     isProduction: deps.env.isProduction,
     kycProviderEnabled: deps.env.KYC_PROVIDER_ENABLED,
   };
-  const coverStorage = new LocalActivityCoverStorage(deps.env.ACTIVITY_UPLOAD_DIR);
-  const activityService = new ActivityService(deps.db, coverStorage, kyc);
-  const hostService = new ActivityHostService(deps.db, coverStorage, kyc);
+  const mediaStorages = createAppMediaStorages(deps.env);
+  const activityService = new ActivityService(deps.db, mediaStorages.activityCover, kyc);
+  const hostService = new ActivityHostService(deps.db, mediaStorages.activityCover, kyc);
   const rsvpService = new ActivityRsvpService(deps.db, kyc);
 
   function requireUser(req: AuthenticatedRequest) {

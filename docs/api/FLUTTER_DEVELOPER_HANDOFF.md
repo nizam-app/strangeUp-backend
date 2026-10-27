@@ -1,6 +1,6 @@
 # Flutter Developer Handoff — StrangeUp Backend
 
-**Last updated:** 2026-10-27 (Task 012 — groups & communities)
+**Last updated:** 2026-10-27 (through Task **021** — canonical consent + KYC verification foundation)
 **Audience:** Flutter mobile team in the **separate Flutter repository** (development based in Bangladesh; product launch market **USA**).
 
 **Maintained by:** `strangeup-backend` only. Backend agents do not implement Flutter screens; they update this file whenever HTTP APIs change.
@@ -9,7 +9,34 @@ This document is the **primary integration guide** for calling the StrangeUp API
 
 - **`docs/api/CURRENT_APIS.md`** — authoritative list of **implemented** routes (update on every API change).
 - **`docs/api/IDENTITY_API_DRAFT.md`** — broader identity contracts (some routes still PLANNED).
-- **`openapi/foundation.yaml`**, **`openapi/identity.yaml`** — machine-readable specs.
+- **`openapi/foundation.yaml`**, **`openapi/identity.yaml`** — machine-readable specs (partial coverage; not every LIVE route).
+
+### Source of truth (avoid drift)
+
+| Question | Read first |
+|---|---|
+| Does this route exist? Method, path, auth, request/response shape? | **`CURRENT_APIS.md`** |
+| Product gating, DEFERRED features, screen mapping, client UX rules? | **This handoff** |
+| Conflict between the two docs? | **`CURRENT_APIS.md` wins** for HTTP contracts; file an issue if handoff looks wrong |
+
+### Server feature flags (Flutter expectations)
+
+Backend ops control these via env (see backend `.env.example`). **Do not infer LIVE behavior from Figma alone.**
+
+| Flag / setting | Typical dev/test | Production default | Flutter guidance |
+|---|---|---|---|
+| `KYC_PROVIDER_ENABLED` + `KYC_PROVIDER` | Often **off** (`FEATURE_DISABLED`) | **Off** until vendor approved | Hide full ID verification flow unless `GET /v1/me/verification/status` shows `canStartVerification: true` |
+| `CONSENT_ENFORCEMENT` | `placeholder_allowed` in test | **`strict`** (when counsel IDs published) | Always **`GET /v1/consents/required`** before register/job apply; use `activeVersionId` from response |
+| `GROUP_COMMUNITY_INTERACTIVE_ENABLED` | **false** | **false** (D-06) | Do not ship stories/polls/photo-post UI as LIVE; Home `stories.status` stays `DEFERRED` |
+| Store checkout / membership billing | **Not implemented** | **Not implemented** | Catalog/cart/save only; no payment CTAs |
+| Transactional email | `dev_stub` (token in server logs) | Provider TBD | Do not assume inbox delivery in local dev |
+
+### Consent before signup (Task 021)
+
+1. `GET /v1/consents/required` (no auth).
+2. For each registration document with `availability` ≠ `UNAVAILABLE`, send register `consents[]` with matching `type` and **`version` = `activeVersionId`**.
+3. Job applications: same registry via `jobApplication` block; field `applicationConsentVersion` must match `activeVersionId`.
+4. **`503` / validation errors** when versions are stale or counsel IDs not published — show “try again later”, do not invent version strings.
 
 ---
 
@@ -35,7 +62,7 @@ Always parse the top-level shape before reading nested fields.
 **Success:** `response.data` + `response.meta.requestId`
 **Failure:** `response.error.code`, `response.error.message`, `response.error.requestId`
 
-**Implemented today:** `/health/*`, `/v1/auth/*`, `/v1/me/*`, discovery, and activities (see `CURRENT_APIS.md`).
+**Implemented routes:** All **LIVE** endpoints are listed in **`CURRENT_APIS.md`** (Tasks 001–021), including health, auth, `/v1/me/*`, interests, discover/users, activities, social, groups, home, notifications, store, jobs, membership, **`/v1/consents/*`**, and **`/v1/me/verification/*`** (latter callable only when backend enables a KYC adapter).
 
 ---
 
@@ -51,9 +78,10 @@ These are **server-enforced**; **do not** simulate them only in UI.
 | Auth methods | Email/password **only** for now — no Google/Apple/phone OTP yet |
 | Trust | **Separate** fields: `emailVerified`, `ageEligibilityStatus`, `identityVerificationStatus` — never one `isVerified` |
 | KYC policy | **APPROVED** (2026-10-26): KYC-01, KYC-03, KYC-05 + five enforcement policies — see §12 and `KYC_OWNER_DECISIONS_002B3A2.md` |
-| KYC APIs | **No live** verification-session endpoints. Activity **publish/confirm** enforcement is LIVE (Task 010) and fails closed in production until a provider exists |
+| KYC APIs | **Task 021:** session/status routes **exist**; default env keeps provider **disabled** (`FEATURE_DISABLED`). Activity **publish/confirm/meeting** enforcement is **LIVE** (Task 010) and **fails closed** in production until `KYC_PROVIDER_ENABLED=true` with a configured adapter. **Veriff live/SDK blocked by owner (KYC-02).** |
+| Consent APIs | **`GET /v1/consents/required`** is LIVE; register/job apply must use server **`activeVersionId`** values (see consent section above) |
 
-**Still open:** mandatory phone, **KYC-02** vendor, **KYC-04** retry/appeal/outage, **KYC-06** legal, **KYC-07** copy, retention (D-09-retention), ops detail (`D-09-kyc-enforcement-ops`), counsel consent version IDs.
+**Still open:** mandatory phone, **KYC-02** vendor selection, **KYC-04** retry/appeal/outage, **KYC-06** legal, **KYC-07** copy, retention (D-09-retention), ops detail (`D-09-kyc-enforcement-ops`), counsel **ACTIVE** consent version IDs for production `strict` mode.
 
 ---
 
@@ -151,7 +179,7 @@ final response = await http.post(
 );
 ```
 
-**Release blocker:** replace consent `version` values when legal publishes canonical document IDs.
+**Consent versions:** Call **`GET /v1/consents/required`** and send each `activeVersionId` for the three registration types. Do not hard-code version strings in the app binary unless you also handle registry rollover. Production **`strict`** enforcement rejects unknown/stale versions.
 
 ### Login + refresh example
 
@@ -188,7 +216,7 @@ await http.post(
 
 ## 8. Password recovery (LIVE API, **DEV_ONLY email delivery**)
 
-**Important:** Reset endpoints are implemented and tested, but **email is not sent by a production provider**. Local/dev backends use an in-process stub (token appears only in server-side stub output / test capture). Plan UX for “check your email” but do not ship production forgot-password until `CURRENT_APIS.md` marks delivery as production-ready.
+**Important:** Reset endpoints are implemented and tested. Default local/dev uses an in-process stub (token in test capture). Production may use **Resend** when ops sets `TRANSACTIONAL_EMAIL_MODE=provider` with verified domain credentials — `handed_to_provider` still does not guarantee inbox delivery. Plan UX for “check your email” accordingly.
 
 ### Forgot password UX
 
@@ -346,11 +374,39 @@ final people = jsonDecode(list.body)['data']['people'] as List;
 1. **Upload:** `POST /v1/me/profile/avatar` with `multipart/form-data`, field name **`avatar`** (JPEG/PNG/WebP, max **5 MiB**). Server validates **file content**, not extension or client MIME; SVG and corrupt files return `400 VALIDATION_ERROR`.
 2. **Display:** If `hasAvatar` on profile GET, fetch `GET /v1/me/profile/avatar` with bearer token (`Cache-Control: private, no-store`).
 3. **Remove:** `DELETE /v1/me/profile/avatar`.
-4. **Production:** Local disk (`PROFILE_UPLOAD_DIR`) is **development only** — object storage, moderation, and ops review are release blockers.
+4. **Production:** Server uses **`MEDIA_STORAGE_BACKEND=s3`** with a private bucket in production (Task 020); Flutter still uploads/downloads via the same multipart fields and authenticated GET routes — **no** direct S3 URLs in API responses. Local disk (`MEDIA_STORAGE_BACKEND=local`) remains dev/test default. Bucket activation and backfill are ops/owner-gated (`docs/operations/MEDIA_OBJECT_STORAGE.md`).
 
 **Signup vs `Screen 06_ Sign Up.pdf`:** Backend register requires `dateOfBirth` and `consents` (D-02). Figma omits DOB and shows phone — add DOB + consent UX in Flutter; omit phone or collect locally only until owner approves phone collection. Map `firstName` / `lastName` to register body (also seeds initial `displayName`).
 
-**Settings hub (`Screen 26_ Profile & Settings.pdf`):** Account/profile flows above are LIVE, plus **authenticated password change** (below). Rows for subscription, 2FA, blocked users, delete account, identity approval badges, etc. are **not** connected — use honest placeholders.
+**Settings hub (`Screen 26_ Profile & Settings.pdf`) — Task 015:**
+
+1. **Hub load:** `GET /v1/me/settings/overview` — use `data.profile`, `data.account`, `data.counts`, and **`data.capabilities`** (never treat DEFERRED/UNAVAILABLE as zero counts). `relatedRoutes` lists existing endpoints for navigation.
+2. **Saved Activities (Activity entities):** `GET /v1/me/saved-activities`, `PUT/DELETE /v1/me/saved-activities/{activityId}`. **Not** the same as Task 008 `favorite-activities` preference pins.
+3. **Blocked users:** LIVE via `GET/POST/DELETE /v1/me/blocks*` (see §9).
+4. **Password & security:** `POST /v1/me/password-change` (below) + `GET /v1/me/security/sessions`, `DELETE /v1/me/security/sessions/{sessionId}`, `POST /v1/auth/logout-all`.
+5. **Email change:** `POST /v1/me/email-change/request` then `POST /v1/me/email-change/confirm` — **DEV_ONLY** email delivery until an approved transactional provider is configured. When **`transactionalEmail.canHandOff`** is false (typical production `TRANSACTIONAL_EMAIL_MODE=disabled`), both routes return **`403 FEATURE_DISABLED`**. After confirm, **all sessions revoked** — force re-login. Password account only (no password → do not show change-email).
+6. **Delete account:** `GET /v1/me/account-deletion/impact` only — show `AWAITING_POLICY`; **no** destructive delete API. Do not show success/deletion complete UI.
+7. **Still DEFERRED / placeholders:** subscription **billing**, payment history, 2FA, phone verify/edit, meetup invites row, host star ratings, “ID Verified” marketing badges beyond `identityVerificationStatus`, 24/7 support guarantees.
+8. **Membership summary (Task 017 / Screen 18):** `data.membership` on settings overview; full detail via `GET /v1/me/membership`; catalog via `GET /v1/membership/plans`. **`capabilities.membershipPlanCatalog: LIVE`**; **`capabilities.subscription: DEFERRED`** (no live upgrade/checkout).
+
+**Membership plans screen (`Screen 18_ Membership Plans.pdf`) — Task 017:**
+
+1. **Default selection:** Users without an approved paid subscription show **`planId: BASIC`**, **`tierKind: FREE`** from `GET /v1/me/membership`.
+2. **Catalog:** `GET /v1/membership/plans` — render Basic as **available** (`pricing.monthlyAmountCents: 0`); Strangeup Club as **coming soon / not configured** (`purchasable: false`, `pricing: null`). **Do not** display Figma `$6.49/mo`, `$77.88/yr`, trial, or “35% off” as live offers until D-08 approves prices.
+3. **Upgrade CTA:** Honor `canUpgrade: false` — disable button or show “Coming soon”; surface `upgradeBlockedReasons` in dev/support builds only if useful.
+4. **Monthly/yearly toggle:** Club intervals are not configured; Basic only exposes `MONTHLY` at zero — hide misleading annual Club math.
+5. **Perks list:** Use `features[]` / `entitlements.capabilities[]` **`status`** — treat `POLICY_PENDING` / `NOT_IMPLEMENTED` as **not active**; never imply 3-RSVP cap, 5-mile radius, or concierge are enforced.
+6. **KYC badge:** Never infer verified ID from membership; use **`identityVerificationStatus`** only (Task 010).
+7. **Apple Pay / receipts / trials:** No APIs — do not show payment sheets, trial countdown, `nextBillingAt`, or invoice history.
+8. **Settings hub:** `GET /v1/me/settings/overview` → `membership.planDisplayName`, `canUpgrade`, `billingStatus: NOT_CONFIGURED`.
+
+```dart
+final membership = await http.get(
+  Uri.parse('$baseUrl/v1/me/membership'),
+  headers: {'Authorization': 'Bearer $accessToken'},
+);
+final planId = jsonDecode(membership.body)['data']['planId']; // BASIC
+```
 
 ### Change password (logged in)
 
@@ -375,7 +431,7 @@ final res = await http.post(
 // 200 → wipe tokens, show login
 ```
 
-**Not yet LIVE:** account deletion, KYC **sessions**. Public profiles and activities are in `CURRENT_APIS.md`.
+**Not yet LIVE:** destructive account deletion, KYC **sessions**, production email for change/reset/verify. Public profiles and activities are in `CURRENT_APIS.md`.
 
 ---
 
@@ -396,11 +452,11 @@ When backend merges API changes, **`CURRENT_APIS.md` must change in that PR**. F
 
 ---
 
-## 12. KYC — APPROVED PRODUCT POLICY vs API / UI NOT LIVE
+## 12. KYC — APPROVED PRODUCT POLICY vs API availability
 
 ### APPROVED PRODUCT POLICY (2026-10-26)
 
-Authoritative: `docs/product/KYC_OWNER_DECISIONS_002B3A2.md`. Verification **sessions** are still not implemented. **Activity publish / confirmed RSVP / meeting access** now enforce these gates in Task 010.
+Authoritative: `docs/product/KYC_OWNER_DECISIONS_002B3A2.md`. **Task 021** added verification **session/status** HTTP routes; they are **not usable in typical dev/prod configs** until ops enables a provider. **Activity publish / confirmed RSVP / meeting access** enforce KYC gates regardless (Task 010).
 
 | Topic | Rule |
 |---|---|
@@ -416,9 +472,16 @@ Authoritative: `docs/product/KYC_OWNER_DECISIONS_002B3A2.md`. Verification **ses
 
 **UX expectations after implementation (behavior approved; copy OPEN — KYC-07):** show verification-needed prompts on protected actions; allow waitlist entry; do not block virtual-only paths solely for KYC-01; guide on expired/revoked — **never** trust upload/selfie screens alone.
 
-### PLANNED / NOT LIVE — APIs and verification UI
+### Verification UI — when to wire (Task 021)
 
-> **Not connected:** No verification session API and no vendor token. **Activity enforcement is connected** (Task 010). **KYC-02 vendor not selected** (`KYC_VENDOR_EVALUATION.md`). Screens #34, #48, #49 — **DESIGN / PLANNED — NOT CONNECTED**.
+| Capability | HTTP | Wire in Flutter when |
+|---|---|---|
+| Consent catalog | `GET /v1/consents/required` | **Now** — required for register and job apply |
+| KYC self-service status | `GET /v1/me/verification/status` | **Now** — drive empty/disabled states from `providerRuntimeStatus` / `canStartVerification` |
+| Start / poll / cancel session | `POST/GET …/verification/sessions*` | **Only when** backend confirms provider enabled (shared dev API or staging); never fake `APPROVED` locally |
+| Provider SDK / Veriff | N/A | **BLOCKED BY OWNER (KYC-02)** until backend team announces activation |
+
+**Production default:** provider **disabled** — show verification-needed messaging on gated activity actions using `IDENTITY_VERIFICATION_REQUIRED`, not a completed ID flow. Screens #34, #48, #49 — design against **`/v1/me/verification/status`**; full SDK flow waits on owner + ops.
 
 **Pending Flutter responsibilities (after backend + vendor exist — PROPOSED):**
 
@@ -436,7 +499,8 @@ Authoritative: `docs/product/KYC_OWNER_DECISIONS_002B3A2.md`. Verification **ses
 | Topic | Guidance |
 |---|---|
 | `identityVerificationStatus` | From login / `GET /v1/me/account` only — expect `NOT_STARTED`; **not** updated by local upload UI |
-| Proposed endpoints | `KYC_API_CANDIDATES.md` — **NOT IMPLEMENTED**; do not call in production |
+| Consent versions | **`GET /v1/consents/required`** before register/job apply; send exact `activeVersionId` per document (or handle `503` when `UNAVAILABLE`) |
+| Session APIs | **`CURRENT_APIS.md`** Task 021 table; **`KYC_API_CANDIDATES.md`** is superseded for implemented routes |
 | Fake success | No verified badge, no join/host enablement from document/selfie screens alone |
 | `fullAccess` | Email + age + active — **not** gov ID (**CONFIRMED**) |
 | Future denial codes | `IDENTITY_VERIFICATION_REQUIRED` is **LIVE** on real-world activity publish/confirm/meeting when KYC is missing |
@@ -520,7 +584,7 @@ final req = await http.post(
 4. **Join:** `POST /v1/groups/{id}/join`. PUBLIC → `ACTIVE`. PRIVATE_APPROVAL → `PENDING`. After `DECLINED` or `REMOVED`, the next join is always `PENDING` (even on PUBLIC). Last owner cannot leave (`403`) — call `POST /v1/me/groups/{id}/transfer-ownership` first.
 5. **Manage (`Screen 2`):** `GET /v1/me/groups/{id}/manage`, approve/decline `.../join-requests/{membershipId}/...`. `memberCount` is ACTIVE rows only.
 6. **Details (`Screen 15`):** `GET /v1/groups/{id}` is a summary. Posts, members, comments, likes, and chat require `canAccessContent: true`. Use generic `404` for unauthorized content — do not infer that the group is missing.
-7. **Posts:** text only `{ "body" }`. Optional `activityId` only after the activity is attached. No Photo/Poll/Story endpoints.
+7. **Posts:** text `{ "body" }`. Optional `activityId` after attach. Task 016 photo/poll fields exist on post DTOs but stay **`photo: null`, `poll: null`** until server enables interactive media (see §18).
 8. **Chat:** `GET /v1/me/group-chats` for Screen 16 group-thread previews. Send via `POST /v1/groups/{id}/chat/messages`. This is **not** `/v1/me/conversations`. No E2EE, typing, or online count.
 9. **Meetups:** `GET /v1/groups/{id}/activities` lists real Task 010 cards. Joining a group does **not** RSVP. Real-world activity publish/confirm still needs Task 010 KYC.
 10. **Never render:** `verified`, `verifiedCommunity`, distance, or invented member counts.
@@ -543,10 +607,103 @@ final groupId = jsonDecode(created.body)['data']['groupId'];
 
 ---
 
+## 16. Home dashboard, community feed & notifications (Task 013)
+
+**Status:** LIVE and verified on isolated Neon `strangeup_test`. **Stories remain DEFERRED** (D-06 provisional).
+
+**Do not ship Figma claims:** 24h disappearing stories row, push badges, “Membership Active” / “Identity Verification Completed” unless backed by future KYC/session APIs, geo “near you” distances, online/active-now indicators, or ML “Recommended For You”.
+
+1. **Home (`Screen 08`):** `GET /v1/home` — single composition call. Use `myGroups`, `communityFeedPreview`, `upcomingGroupActivities`, `people`, `activities`, `featured`, `notificationsUnreadCount`. Render `stories.status === "DEFERRED"` as hidden/disabled (no client-side fake story data).
+2. **Community feed:** `GET /v1/me/community-feed?cursor=&limit=&groupId=` — cross-group text posts only; optional `linkedActivity` public card (no meeting fields). Paginate with `meta.nextCursor`. Pins are **not** globally prioritized across groups.
+3. **Notifications (`Html → Notification.pdf`):** `GET /v1/me/notifications` returns `{ notifications, unreadCount }`. Group Today/Earlier in Flutter by `createdAt`. `POST .../read` idempotent; `POST /v1/me/notifications/read-all` before “Mark all as read”.
+4. **Navigation targets (IDs only — routes still enforce ACL):**
+
+| `type` | Suggested screen |
+|---|---|
+| `MESSAGE_REQUEST_RECEIVED` | Message requests inbox |
+| `MESSAGE_REQUEST_ACCEPTED` | `/v1/me/conversations` list |
+| `DIRECT_MESSAGE_RECEIVED` | Conversation for `sourceId` |
+| `GROUP_MEMBERSHIP_APPROVED` / `DECLINED` | Group detail `sourceId` |
+| `ACTIVITY_RSVP_*` / `ACTIVITY_WAITLIST_PROMOTED` | Activity detail `sourceId` |
+
+5. **Pull-only:** no WebSocket, FCM, or email from these endpoints.
+
+```dart
+final home = await http.get(
+  Uri.parse('$baseUrl/v1/home'),
+  headers: {'Authorization': 'Bearer $accessToken'},
+);
+final unread = jsonDecode(home.body)['data']['notificationsUnreadCount'];
+```
+
+---
+
+## 17. Store & jobs (Task 014)
+
+**Status:** LIVE on isolated Neon `strangeup_test`. **Checkout, payment, tax, shipping, membership discounts, and employer delivery are NOT LIVE.**
+
+**Screens:** 20 (marketplace grid), 21 (product detail), 22 (cart — subtotal only), 23 (jobs).
+
+**Do not ship Figma claims:** star ratings, member/club prices, “verified” merchant badges, saved payment cards, place order, shipping/pickup ETAs, miles/nearest jobs, official partner badges, applicant counts, or “application sent to employer” unless backend adds real delivery status.
+
+1. **Store catalog:** `GET /v1/store/categories` then `GET /v1/store/products?category=cycling&q=&size=&color=&cursor=`. Empty product list is valid on fresh DBs. Product cards use `priceFromCents` + `currency` only — no ratings or member price fields.
+2. **Product detail:** `GET /v1/store/products/{productId}` — variants include `stockQuantity` and `inStock`; images via `GET /v1/store/products/{productId}/images/{imageId}` when `primaryImageId` set.
+3. **Favorites:** `PUT/DELETE /v1/me/store/favorites/{productId}`; list `GET /v1/me/store/favorites`.
+4. **Cart:** `PUT /v1/me/store/cart/items/{variantId}` body `{ "quantity": n }` (0 removes). `GET /v1/me/store/cart` returns `subtotalCents`, `subtotalDisclaimer`, and `checkout: { status: "UNAVAILABLE", reasonCode: "PAYMENT_AND_FULFILLMENT_NOT_CONFIGURED", ... }`. **Disable Place Order** in UI.
+5. **Jobs discovery:** `GET /v1/jobs` with filters; detail `GET /v1/jobs/{jobId}`. Pay block includes `disclaimer` (self-reported). Saved: `PUT/DELETE /v1/me/saved-jobs/{jobId}`.
+6. **Apply:** `POST /v1/jobs/{jobId}/applications` with `coverMessage` + `applicationConsentVersion` (non-empty string until counsel publishes IDs). Response includes `employerDelivery.status === "NOT_CONFIGURED"` — show in-app tracking only.
+7. **My applications:** `GET /v1/me/job-applications` and `GET /v1/me/job-applications/{applicationId}`.
+8. **Job drafts (optional employer prep):** `POST/PATCH/GET /v1/me/job-listings` — **DRAFT only**; never appears in `GET /v1/jobs` until a future trusted publisher exists.
+
+```dart
+final cart = await http.get(
+  Uri.parse('$baseUrl/v1/me/store/cart'),
+  headers: {'Authorization': 'Bearer $accessToken'},
+);
+final checkout = jsonDecode(cart.body)['data']['checkout'];
+assert(checkout['status'] == 'UNAVAILABLE');
+```
+
+---
+
+## 18. Group stories, photo posts & polls (Task 016)
+
+**Status:** **IMPLEMENTED BUT DISABLED** by default (`GROUP_COMMUNITY_INTERACTIVE_ENABLED=false`, D-06 provisional). **Not LIVE** for production UI until owner approves `docs/decisions/D-06-COMMUNITY-MEDIA-TASK016.md`. Home **`GET /v1/home` → `stories.status: DEFERRED`** unchanged.
+
+1. **Gate handling:** Interactive routes return `403` with `error.code === "FEATURE_DISABLED"`. Hide Photo/Poll/Story composer actions unless a future capabilities endpoint or owner flag says otherwise — do **not** treat HTTP 403 as a crash.
+2. **Photo post (when enabled):** `POST /v1/groups/{groupId}/posts/{postId}/media` multipart field **`image`**. Display via authenticated `GET .../media/{mediaId}` (private cache). Post list includes `photo: { mediaId, contentPath }` when enabled.
+3. **Poll (when enabled):** `POST .../poll` with ISO `closesAt` and 2–6 distinct options. Vote `PUT .../poll/vote` `{ optionId }` once. Render counts from server; never show other voters’ identities.
+4. **Group stories (when enabled):** `POST /v1/groups/{groupId}/stories` with **`image`**. List `GET .../stories`. Media `GET .../stories/{storyId}/media` — treat `404` after 24h as expired. **Do not** build personal “Your Story” until D06-04 is approved.
+5. **Reports:** `POST /v1/groups/{groupId}/content-reports` with bounded `reason` enum. Moderators list OPEN reports at `GET` same path prefix.
+6. **Still deferred:** push fanout, view receipts, public story discovery on Home, production object storage, automated expiry cron, platform trust badges.
+
+---
+
+## 19. Membership plans & entitlements (Task 017, Screen 18)
+
+**Status:** **LIVE** catalog and self status on isolated Neon. **Billing, Club enrollment, trials, and Apple Pay are NOT LIVE** (D-08 / MKT-03).
+
+1. **Load plans:** `GET /v1/membership/plans` — two offers (`BASIC`, `CLUB`). Club `pricing: null`, `purchasable: false`.
+2. **Current tier:** `GET /v1/me/membership` — always `BASIC` + `FREE` until trusted billing exists; `canUpgrade: false`.
+3. **Settings hub:** `GET /v1/me/settings/overview` → `membership` summary + `capabilities.membershipPlanCatalog: LIVE`.
+4. **Do not bind:** Figma annual/monthly Club prices, trial banner, verified badge from plan, or payment CTAs.
+5. **KYC unchanged:** Activity/group gates still use `identityVerificationStatus`, not membership.
+
+See Screen 18 binding bullets under §9 settings hub (item 8).
+
+---
+
 ## Change log
 
 | Date | Summary |
 |---|---|
+| 2026-10-27 | Handoff sync — source-of-truth table, feature flags, consent flow; KYC §3/§12 aligned with Task 021 + `CURRENT_APIS.md` |
+| 2026-10-27 | Task 021 — canonical consent + verification routes (provider usually disabled); see §12 table |
+| 2026-10-27 | Task 017 — membership catalog + self entitlements; §19; D-08 billing deferred |
+| 2026-10-27 | Task 016 — group photo/poll/story/report APIs behind D-06 flag; §18; Home stories still DEFERRED |
+| 2026-10-27 | Task 015 — settings overview, saved activities, sessions, email change (DEV_ONLY), deletion impact; §9 Screen 26 |
+| 2026-10-27 | Task 014 — store catalog/cart/favorites + jobs discovery/applications/drafts; §17; checkout & employer delivery deferred |
+| 2026-10-27 | Task 013 — home dashboard, community feed, in-app notifications; §16; stories deferred |
 | 2026-10-27 | Task 012 — groups/membership/posts/group chat/activity links; §15; no stories/polls/verified badge |
 | 2026-10-27 | Task 011 — follow/wave/message requests/1:1 chat; §14; no E2EE or presence |
 | 2026-10-27 | Task 010 — activities discovery/detail/create, RSVP/waitlist, meeting privacy, KYC enforcement; §13 |

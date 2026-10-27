@@ -28,10 +28,30 @@ enum IdentityVerificationStatus {
   PENDING
   APPROVED
   REJECTED
+  EXPIRED
+  REVOKED
+}
+
+enum VerificationProvider {
+  MOCK
+  VERIFF
+}
+
+enum VerificationSessionStatus {
+  PENDING_USER
+  PENDING_PROVIDER
+  APPROVED
+  DECLINED
+  RESUBMISSION_REQUESTED
+  IN_REVIEW
+  EXPIRED
+  ABANDONED
+  CANCELLED
 }
 
 enum AuthChallengeType {
   EMAIL_VERIFY
+  EMAIL_CHANGE
   PASSWORD_RESET
   PHONE_OTP
 }
@@ -68,6 +88,9 @@ model User {
   phoneVerifiedAt            DateTime?
   ageEligibilityStatus       AgeEligibilityStatus       @default(UNKNOWN)
   identityVerificationStatus IdentityVerificationStatus @default(NOT_STARTED)
+  identityVerificationApprovedAt DateTime?
+  identityVerificationValidUntil DateTime?
+  identityVerificationRevokedAt  DateTime?
   suspendedAt                DateTime?
   deletedAt                  DateTime?
   createdAt                  DateTime                   @default(now())
@@ -106,8 +129,54 @@ model User {
   communityGroupMessagesAuthored CommunityGroupMessage[]
   communityGroupReadStates       CommunityGroupReadState[]
   communityGroupActivitiesAttached CommunityGroupActivity[]  @relation("CommunityGroupActivityAttacher")
+  notificationsReceived          UserNotification[]          @relation("UserNotificationsReceived")
+  notificationsAsActor           UserNotification[]          @relation("UserNotificationsActor")
+  storeFavorites                 StoreFavorite[]
+  storeCartItems                 StoreCartItem[]
+  jobListingsAuthored            JobListing[]                @relation("JobListingAuthor")
+  savedJobs                      SavedJob[]
+  jobApplications                JobApplication[]
+  savedActivities                SavedActivity[]
+  communityGroupMediaAuthored    CommunityGroupMedia[]       @relation("CommunityGroupMediaAuthor")
+  communityStoriesAuthored       CommunityGroupStory[]       @relation("CommunityGroupStoryAuthor")
+  communityStoriesRemoved        CommunityGroupStory[]       @relation("CommunityGroupStoryRemovedBy")
+  communityPollsAuthored         CommunityPoll[]             @relation("CommunityPollAuthor")
+  communityPollVotes             CommunityPollVote[]
+  communityContentReportsFiled   CommunityContentReport[]    @relation("CommunityContentReportReporter")
+  communityContentReportsReviewed CommunityContentReport[]   @relation("CommunityContentReportReviewer")
+  verificationSessions            VerificationSession[]
 
   @@index([accountStatus])
+}
+
+enum UserNotificationType {
+  MESSAGE_REQUEST_RECEIVED
+  MESSAGE_REQUEST_ACCEPTED
+  DIRECT_MESSAGE_RECEIVED
+  GROUP_MEMBERSHIP_APPROVED
+  GROUP_MEMBERSHIP_DECLINED
+  ACTIVITY_RSVP_CONFIRMED
+  ACTIVITY_RSVP_WAITLISTED
+  ACTIVITY_WAITLIST_PROMOTED
+}
+
+model UserNotification {
+  id          String               @id @default(uuid()) @db.Uuid
+  recipientId String               @db.Uuid
+  recipient   User                 @relation("UserNotificationsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+  type        UserNotificationType
+  actorUserId String?              @db.Uuid
+  actor       User?                @relation("UserNotificationsActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  sourceId    String?              @db.Uuid
+  title       String
+  body        String
+  dedupeKey   String?              @unique
+  readAt      DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([recipientId, readAt, createdAt, id])
+  @@index([recipientId, createdAt, id])
 }
 
 model PasswordCredential {
@@ -154,15 +223,18 @@ model AuthChallenge {
 }
 
 model ConsentRecord {
-  id              String      @id @default(uuid()) @db.Uuid
-  userId          String      @db.Uuid
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  consentType     ConsentType
-  documentVersion String
-  recordedAt      DateTime    @default(now())
-  ipHash          String?
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @db.Uuid
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consentType       ConsentType
+  documentId        String?
+  documentVersion   String
+  acceptanceContext String      @default("REGISTRATION")
+  recordedAt        DateTime    @default(now())
+  ipHash            String?
 
   @@index([userId])
+  @@index([userId, consentType, documentVersion])
 }
 
 model Profile {
@@ -305,6 +377,7 @@ model Activity {
   participations ActivityParticipation[]
   communityGroupLinks CommunityGroupActivity[]
   communityPosts      CommunityPost[]
+  savedBy               SavedActivity[]
 
   @@index([status, audience, startsAt])
   @@index([categoryId, status, startsAt])
@@ -327,6 +400,17 @@ model ActivityParticipation {
   @@unique([activityId, userId])
   @@index([userId, state])
   @@index([activityId, state, waitlistPosition])
+}
+
+model SavedActivity {
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityId String   @db.Uuid
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@id([userId, activityId])
+  @@index([userId, createdAt, activityId])
 }
 
 enum DirectMessageRequestStatus {
@@ -490,6 +574,10 @@ model CommunityGroup {
   messages     CommunityGroupMessage[]
   readStates   CommunityGroupReadState[]
   activities   CommunityGroupActivity[]
+  groupMedia   CommunityGroupMedia[]
+  stories      CommunityGroupStory[]
+  polls        CommunityPoll[]
+  contentReports CommunityContentReport[]
 
   @@index([status, privacy, createdAt])
   @@index([categoryId, status])
@@ -546,9 +634,142 @@ model CommunityPost {
 
   comments CommunityPostComment[]
   likes    CommunityPostLike[]
+  photoMedia CommunityGroupMedia?
+  poll       CommunityPoll?
 
   @@index([groupId, moderation, pinnedAt, createdAt])
   @@index([authorId, createdAt])
+}
+
+enum CommunityGroupMediaKind {
+  POST_ATTACHMENT
+  STORY
+}
+
+enum CommunityGroupMediaLifecycle {
+  ACTIVE
+  REMOVED
+}
+
+model CommunityGroupMedia {
+  id          String                       @id @default(uuid()) @db.Uuid
+  groupId     String                       @db.Uuid
+  group       CommunityGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  kind        CommunityGroupMediaKind
+  lifecycle   CommunityGroupMediaLifecycle @default(ACTIVE)
+  storageKey  String
+  contentType String
+  byteSize    Int
+  authorId    String                       @db.Uuid
+  author      User                         @relation("CommunityGroupMediaAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  postId      String?                      @unique @db.Uuid
+  post        CommunityPost?               @relation(fields: [postId], references: [id], onDelete: SetNull)
+  story       CommunityGroupStory?
+  createdAt   DateTime                     @default(now())
+  removedAt   DateTime?
+  expiresAt   DateTime?
+
+  @@index([groupId, kind, lifecycle, expiresAt])
+}
+
+model CommunityGroupStory {
+  id          String                       @id @default(uuid()) @db.Uuid
+  groupId     String                       @db.Uuid
+  group       CommunityGroup               @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId    String                       @db.Uuid
+  author      User                         @relation("CommunityGroupStoryAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  mediaId     String                       @unique @db.Uuid
+  media       CommunityGroupMedia          @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  moderation  CommunityPostModerationState @default(VISIBLE)
+  removedAt   DateTime?
+  removedById String?                      @db.Uuid
+  removedBy   User?                        @relation("CommunityGroupStoryRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime                     @default(now())
+  expiresAt   DateTime
+
+  @@index([groupId, moderation, expiresAt, createdAt])
+}
+
+model CommunityPoll {
+  id        String         @id @default(uuid()) @db.Uuid
+  postId    String         @unique @db.Uuid
+  post      CommunityPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  groupId   String         @db.Uuid
+  group     CommunityGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId  String         @db.Uuid
+  author    User           @relation("CommunityPollAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  closesAt  DateTime
+  createdAt DateTime       @default(now())
+
+  options CommunityPollOption[]
+  votes   CommunityPollVote[]
+
+  @@index([groupId])
+}
+
+model CommunityPollOption {
+  id        String        @id @default(uuid()) @db.Uuid
+  pollId    String        @db.Uuid
+  poll      CommunityPoll @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  sortOrder Int
+  label     String
+
+  votes CommunityPollVote[]
+
+  @@unique([pollId, sortOrder])
+  @@index([pollId])
+}
+
+model CommunityPollVote {
+  pollId    String              @db.Uuid
+  poll      CommunityPoll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  userId    String              @db.Uuid
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  optionId  String              @db.Uuid
+  option    CommunityPollOption @relation(fields: [optionId], references: [id], onDelete: Restrict)
+  createdAt DateTime            @default(now())
+
+  @@id([pollId, userId])
+  @@index([pollId, optionId])
+}
+
+enum CommunityContentReportReason {
+  SPAM
+  HARASSMENT
+  INAPPROPRIATE_MEDIA
+  OTHER
+}
+
+enum CommunityContentReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum CommunityContentReportTargetType {
+  POST
+  STORY
+  POST_MEDIA
+}
+
+model CommunityContentReport {
+  id           String                           @id @default(uuid()) @db.Uuid
+  groupId      String                           @db.Uuid
+  group        CommunityGroup                   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  reporterId   String                           @db.Uuid
+  reporter     User                             @relation("CommunityContentReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType   CommunityContentReportTargetType
+  targetId     String                           @db.Uuid
+  reason       CommunityContentReportReason
+  detail       String?
+  status       CommunityContentReportStatus     @default(OPEN)
+  createdAt    DateTime                         @default(now())
+  reviewedAt   DateTime?
+  reviewedById String?                          @db.Uuid
+  reviewedBy   User?                            @relation("CommunityContentReportReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@unique([reporterId, targetType, targetId])
+  @@index([groupId, status, createdAt])
 }
 
 model CommunityPostComment {
@@ -613,4 +834,235 @@ model CommunityGroupActivity {
 
   @@id([groupId, activityId])
   @@index([activityId])
+}
+
+enum StoreProductStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum JobListingStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum JobWorkMode {
+  ONSITE
+  REMOTE
+  HYBRID
+}
+
+enum JobEmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  PER_SESSION
+}
+
+enum JobPayPeriod {
+  HOURLY
+  ANNUAL
+  PER_SESSION
+}
+
+enum JobApplicationStatus {
+  SUBMITTED
+  IN_REVIEW
+  WITHDRAWN
+  DECLINED
+  ACCEPTED
+}
+
+model StoreCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  label     String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products StoreProduct[]
+
+  @@index([isActive, sortOrder])
+}
+
+model StoreProduct {
+  id          String             @id @default(uuid()) @db.Uuid
+  slug        String             @unique
+  title       String
+  description String
+  categoryId  String             @db.Uuid
+  category    StoreCategory      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  status      StoreProductStatus @default(DRAFT)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  variants StoreProductVariant[]
+  images   StoreProductImage[]
+  favorites StoreFavorite[]
+
+  @@index([status, categoryId, createdAt, id])
+  @@index([status, createdAt, id])
+}
+
+model StoreProductVariant {
+  id                 String   @id @default(uuid()) @db.Uuid
+  productId          String   @db.Uuid
+  product            StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku                String   @unique
+  sizeLabel          String?
+  colorLabel         String?
+  priceCents         Int
+  compareAtPriceCents Int?
+  currency           String   @default("USD")
+  stockQuantity      Int      @default(0)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  cartItems StoreCartItem[]
+
+  @@index([productId, isActive])
+  @@index([productId, sizeLabel, colorLabel])
+}
+
+model StoreProductImage {
+  id           String       @id @default(uuid()) @db.Uuid
+  productId    String       @db.Uuid
+  product      StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  storageKey   String
+  contentType  String
+  sortOrder    Int          @default(0)
+  createdAt    DateTime     @default(now())
+
+  @@index([productId, sortOrder])
+}
+
+model StoreFavorite {
+  userId    String       @db.Uuid
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String       @db.Uuid
+  product   StoreProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@id([userId, productId])
+  @@index([userId, createdAt])
+}
+
+model StoreCartItem {
+  userId    String              @db.Uuid
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variantId String              @db.Uuid
+  variant   StoreProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  quantity  Int
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@id([userId, variantId])
+  @@index([userId])
+}
+
+model JobListing {
+  id                 String             @id @default(uuid()) @db.Uuid
+  authorUserId       String?            @db.Uuid
+  author             User?              @relation("JobListingAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  title              String
+  description        String
+  companyDisplayName String
+  locationCity       String?
+  locationRegion     String?
+  workMode           JobWorkMode?
+  employmentType     JobEmploymentType
+  payMinCents        Int?
+  payMaxCents        Int?
+  payCurrency        String?
+  payPeriod          JobPayPeriod?
+  status             JobListingStatus   @default(DRAFT)
+  publishedAt        DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  savedBy      SavedJob[]
+  applications JobApplication[]
+
+  @@index([status, createdAt, id])
+  @@index([authorUserId, status])
+  @@index([status, employmentType])
+}
+
+model SavedJob {
+  userId       String     @db.Uuid
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobListingId String     @db.Uuid
+  jobListing   JobListing @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@id([userId, jobListingId])
+  @@index([userId, createdAt])
+}
+
+model JobApplication {
+  id                      String               @id @default(uuid()) @db.Uuid
+  jobListingId            String               @db.Uuid
+  jobListing              JobListing           @relation(fields: [jobListingId], references: [id], onDelete: Cascade)
+  applicantUserId         String               @db.Uuid
+  applicant               User                 @relation(fields: [applicantUserId], references: [id], onDelete: Cascade)
+  coverMessage            String
+  applicationConsentVersion String
+  status                  JobApplicationStatus @default(SUBMITTED)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  @@unique([jobListingId, applicantUserId])
+  @@index([applicantUserId, createdAt, id])
+}
+
+model VerificationSession {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  userId             String                    @db.Uuid
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider           VerificationProvider
+  providerSessionRef String
+  providerAttemptRef String?
+  status             VerificationSessionStatus @default(PENDING_USER)
+  authoritySequence  BigInt                    @default(0)
+  sessionExpiresAt   DateTime
+  completedAt        DateTime?
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  decisions VerificationDecision[]
+
+  @@unique([provider, providerSessionRef])
+  @@index([userId, createdAt])
+  @@index([userId, status])
+}
+
+model VerificationDecision {
+  id               String              @id @default(uuid()) @db.Uuid
+  sessionId        String              @db.Uuid
+  session          VerificationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  providerEventId  String
+  decisionStatus   VerificationSessionStatus
+  decisionAt       DateTime
+  authoritySequence BigInt
+  createdAt        DateTime            @default(now())
+
+  @@unique([sessionId, providerEventId])
+  @@index([sessionId, authoritySequence])
+}
+
+model VerificationWebhookReceipt {
+  id              String               @id @default(uuid()) @db.Uuid
+  provider        VerificationProvider
+  providerEventId String
+  sessionId       String?              @db.Uuid
+  receivedAt      DateTime             @default(now())
+
+  @@unique([provider, providerEventId])
 }

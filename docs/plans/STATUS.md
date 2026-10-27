@@ -1,4 +1,4 @@
-# StrangeUp Engineering Status (as of 2026-10-27, Task 012)
+# StrangeUp Engineering Status (as of 2026-10-27, Task 021)
 
 | Scope | Status | Evidence / blockers |
 |---|---|---|
@@ -31,10 +31,20 @@
 | **Task 010 — activities & meetups** | **VERIFIED (Neon)** | Migration `20261027180000_activities`; KYC fail-closed publish/confirm; waitlist; meeting privacy |
 | **Task 011 — social connections & 1:1 messaging** | **IMPLEMENTED** | Migration `20261027190000_social_connections`; follow/wave/requests/1:1; no E2EE/presence; `FOLLOWERS_ONLY` still unpublished |
 | **Task 012 — groups & communities** | **VERIFIED (Neon)** | Migration `20261027200000_community_groups`; discovery, membership, posts, group chat, activity links; stories/polls/photo posts deferred |
-| Unit tests / quality gates | **VERIFIED (2026-10-27, Neon, Task 012)** | prisma validate/generate; typecheck; lint; format:check; unit **131**; integration **72 passed**, 1 skipped; build |
-| Consent document versions | **RELEASE BLOCKER** | Server records client-supplied versions; counsel canonical IDs not configured |
-| Email delivery | **DEV STUB ONLY** | Password reset + verification not production-ready |
-| Distributed rate limiting | **OPEN** | In-memory `Map` only; multi-replica deployment needs shared limiter |
+| **Task 013 — home, feed & notifications** | **VERIFIED (Neon)** | Migration `20261027210000_user_notifications`; `/v1/home`, `/v1/me/community-feed`, notification inbox + hooks; stories deferred |
+| **Task 014 — store & jobs** | **VERIFIED (Neon)** | Migration `20261027220000_store_and_jobs`; `/v1/store/*`, `/v1/jobs/*`, self cart/favorites/applications; checkout & employer delivery deferred |
+| **Task 015 — settings & account lifecycle** | **VERIFIED (Neon)** | Migration `20261027230000_saved_activities_settings`; settings overview, saved activities, email change (DEV_ONLY), sessions, deletion impact; no destructive delete |
+| **Task 016 — stories, photo posts & polls** | **IMPLEMENTED (disabled default)** | Migration `20261027240000_community_stories_media_polls`; routes behind `GROUP_COMMUNITY_INTERACTIVE_ENABLED=false`; Home stories **DEFERRED**; D-06 provisional |
+| **Task 017 — membership plans & entitlements** | **IMPLEMENTED** | No migration; `GET /v1/membership/plans`, `GET /v1/me/membership`; settings overview `membership`; Club **NOT_CONFIGURED**; D-08 checklist in `OPEN_QUESTIONS.md` |
+| **Task 018 — release hardening (phase 1)** | **VERIFIED (Neon)** | Production env fail-closed; format drift diagnosis; unit **169**; integration **97 passed**, 1 skipped (Tasks 006–017 regression) |
+| **Task 019 — auth email & abuse protection** | **IMPLEMENTED (local)** | Transport boundary; fail-closed modes; ops runbook |
+| **Task 019B — Resend + Upstash adapters** | **IMPLEMENTED (local)** | `createResendEmailSender`, `createRedisRateLimitStore` (rediss:// + Lua); **no live vendor calls in CI**; production activation still requires deployment secrets + owner deploy authorization |
+| **Task 020 — production media storage** | **IMPLEMENTED (local)** | S3-compatible private adapter (`@aws-sdk/client-s3`); `MEDIA_STORAGE_BACKEND=local|s3`; avatars, activity/group covers, gated group content wired; store images local read-only; **no live bucket writes in CI**; ops guide `docs/operations/MEDIA_OBJECT_STORAGE.md` |
+| **Task 021 — KYC + canonical consent** | **VERIFIED (Neon)** | Migration `20261027250000_kyc_verification_consent`; `GET /v1/consents/required`; verification sessions + mock webhook; Veriff **BLOCKED BY OWNER**; unit **198**; integration **101 passed**, 1 skipped |
+| Unit tests / quality gates | **VERIFIED (2026-10-27, Neon, Task 021)** | prisma validate/generate; typecheck; lint; build; unit + integration on `strangeup_test` |
+| Consent document versions | **RELEASE BLOCKER (partial fix)** | Server registry + validation live; counsel **ACTIVE** legal version IDs still pending (`CONSENT_ENFORCEMENT=strict` in production) |
+| Email delivery | **ADAPTER READY** | Resend SDK wired behind `TRANSACTIONAL_EMAIL_MODE=provider`; default remains `dev_stub`; inbox delivery not verified in CI |
+| Distributed rate limiting | **ADAPTER READY** | Upstash via `ioredis` + `RATE_LIMIT_REDIS_URL`; async `checkRateLimit`; fail-closed on Redis errors |
 | Native PostgreSQL concurrency testing | **VERIFIED (Neon PG 18.6)** | `T005-C01`, `T006-C01`, `T007-C01`, `T010-C01` passed on isolated `strangeup_test` |
 | Payment/verification provider choices | UNRESOLVED | KYC vendor open (D-09); decision register in `docs/product/KYC_REQUIREMENTS_DECISION_GATE.md` |
 | **Task 002B.3A — KYC architecture (docs)** | **COMPLETE (design)** | Architecture + candidate APIs + acceptance matrix |
@@ -150,15 +160,51 @@
 - **Figma:** Screens 14/15/1/2/08/16 (Phase 0 + task list; group PDFs not in the current local design-reference folder).
 - **Schema:** `CommunityGroup*` + membership/posts/comments/likes/messages/read-state/activity-link; migration `20261027200000_community_groups`.
 - **API:** catalog, discovery, create/manage, join/approve, posts/comments/likes, group chat, cover, linked activities.
-- **Not claimed:** verified-community badge, nearby, stories, polls, photo posts, E2EE, presence, Home Dashboard aggregate.
+- **Not claimed:** verified-community badge, nearby, stories, polls, photo posts, E2EE, presence.
 - **Decisions:** `docs/decisions/D-GROUPS-TASK012.md` (provisional; D-06 open).
 - **Section status:** **VERIFIED (Neon `strangeup_test`)** — integration **72 passed**, 1 skipped including T012-P01..P08 and T012-C01.
 
+## Task 013 summary (2026-10-27)
+
+- **Figma:** Screen 08 Home Dashboard (+ Community & Stories Update), Html → Notification.pdf.
+- **Schema:** `UserNotification` + `UserNotificationType`; migration `20261027210000_user_notifications`.
+- **API:** `GET /v1/home`; `GET /v1/me/community-feed`; `GET/POST /v1/me/notifications*` (read + read-all).
+- **Hooks:** message request create/accept, direct message send (aggregated), group join approve/decline, RSVP confirm/waitlist/promotion.
+- **Deferred:** 24h stories, push/email, fabricated KYC/membership/invitation/reminder cards, photo/poll/share posts in feed.
+- **Parity:** `docs/product/FIGMA_HOME_FEED_NOTIFICATIONS_PARITY_TASK013.md`.
+- **Section status:** **VERIFIED (Neon)** — integration **76 passed**, 1 skipped; unit **132**; T013-H01–H04.
+
+## Task 015 summary (2026-10-27)
+
+- **Figma:** `Screen 26_ Profile & Settings.pdf` — hub parity matrix `FIGMA_SETTINGS_PARITY_TASK015.md`.
+- **Schema:** `SavedActivity` join; `AuthChallengeType.EMAIL_CHANGE`; migration `20261027230000_saved_activities_settings`.
+- **API:** settings overview, saved activities, session inventory/revoke, email change (DEV_ONLY), account-deletion impact (non-destructive).
+- **Not shipped:** destructive delete, 2FA, subscription/billing, production email, phone verify write path.
+- **Decisions:** SET-01..SET-05 provisional in `OPEN_QUESTIONS.md`.
+- **Section status:** **VERIFIED (Neon)** — unit **148**; integration **87 passed**, 1 skipped (Tasks 006–015 regression).
+
+## Task 017 summary (2026-10-27)
+
+- **Figma:** `Screen 18_ Membership Plans.pdf` — parity `FIGMA_MEMBERSHIP_PARITY_TASK017.md`.
+- **Schema:** none (server-owned plan registry in `src/modules/membership/*`).
+- **API:** `GET /v1/membership/plans`, `GET /v1/me/membership`; settings overview `membership` + `capabilities.membershipPlanCatalog`.
+- **Not shipped:** subscribe/upgrade, trials, Club pricing, webhooks, entitlement enforcement on existing APIs.
+- **Decisions:** D-08 checklist in `OPEN_QUESTIONS.md` (OPEN).
+- **Section status:** **VERIFIED (Neon)** — unit **156** (39 files); integration **97 passed**, 1 skipped (`GET /health/ready` docs placeholder); Tasks 006–016 regression included.
+
+## Task 018 summary (2026-10-27)
+
+- **Production startup:** `loadEnv()` rejects unsafe `NODE_ENV=production` (weak JWT, missing `PUBLIC_APP_BASE_URL`, localhost CORS, `.data` upload dirs, D-06 interactive flag, KYC provider flag without vendor).
+- **HTTP fail-closed:** email-change request/confirm return **`403 FEATURE_DISABLED`** in production (dev stub email remains non-production).
+- **Tooling:** `.gitattributes` + `.editorconfig` (LF); `scripts/format-drift-diagnosis.ts` + `npm run format:diagnose` — classifies CRLF vs substantive Prettier drift without mass reformat.
+- **Tests:** `tests/production-env.test.ts`, `tests/settings-feature-gates.test.ts`, `tests/rate-limit.test.ts`.
+- **Format diagnosis (2026-10-27):** `npm run format:diagnose` — **218** line-ending-only, **27** substantive (incl. new Task 018 files + legacy drift); **245** files fail global `format:check` on this Windows workspace; CI (Ubuntu LF) may differ.
+- **Not resolved:** distributed rate limiting, production ESP, KYC vendor, consent canonical IDs, repository-wide LF normalization (owner approval for one-time mechanical commit).
+
 ## Immediate next steps (backend only)
 
-1. **Owner:** apply additive migration `20261027200000_community_groups` to isolated Neon catalogs via `npm run db:neon:migrate`, then `RUN_INTEGRATION=1 npm run test:integration` (Tasks 006–012).
-2. **Next Figma section (recommended):** **Community Feed / Stories / Home Dashboard**, or **Marketplace / Jobs** if Stories remain deferred.
-3. **Settings hub (Screen 26):** account deletion / email change — legal policy slices (separate from Edit Personal Details).
-4. Owner: decide D-06 group policy and whether to authorize **Task 002B.3B** KYC foundation under documented gates.
-5. Production email provider + distributed abuse controls before staging forgot-password UX.
-6. Git logical commits / remote when owner approves.
+1. **Next milestone (owner-gated):** **D-08 billing provider integration** after commercial sign-off **or** **D-06 activation** for Task 016 interactive media **or** MKT-03 checkout.
+2. Owner: **SET-03** account deletion retention/disposition; **SET-01** production email for change/reset/verify.
+3. Owner: D-06 group policy residual; authorize **Task 002B.3B** KYC foundation only when explicitly approved.
+4. Distributed rate limiting + production ESP before staging account-recovery UX at scale.
+5. Git logical commits / remote when owner approves.

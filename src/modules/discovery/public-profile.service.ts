@@ -1,9 +1,8 @@
-import { readFile } from "node:fs/promises";
 import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
-import type { LocalAvatarStorage } from "../profile-media/local-avatar-storage.js";
+import type { AvatarStorage } from "../profile-media/local-avatar-storage.js";
 import { toPolicyActor } from "../policy/account-policy.js";
 import {
   canBrowseDiscovery,
@@ -16,7 +15,7 @@ import { toPublicProfileDetail } from "./public-profile.dto.js";
 export class PublicProfileService {
   constructor(
     private readonly db: DatabaseClient,
-    private readonly avatarStorage: LocalAvatarStorage,
+    private readonly avatarStorage: AvatarStorage,
   ) {}
 
   private async loadTargetForViewer(viewer: User, targetUserId: string) {
@@ -120,9 +119,7 @@ export class PublicProfileService {
       throw new AppError("NOT_FOUND", PUBLIC_NOT_FOUND_MESSAGE, 404);
     }
 
-    this.avatarStorage.assertStorageKeyOwnedByUser(profile.avatarStorageKey, target.id);
-    const absolutePath = this.avatarStorage.resolveAbsolutePath(profile.avatarStorageKey);
-    const buffer = await readFile(absolutePath);
+    const buffer = await this.avatarStorage.readBytes(profile.avatarStorageKey, target.id);
     return { buffer, contentType: profile.avatarContentType };
   }
 }

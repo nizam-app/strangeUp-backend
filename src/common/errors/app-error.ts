@@ -9,7 +9,9 @@ export type AppErrorCode =
   | "AUTH_CHALLENGE_EXPIRED"
   | "AUTH_RATE_LIMITED"
   | "CONFLICT"
-  | "IDENTITY_VERIFICATION_REQUIRED";
+  | "IDENTITY_VERIFICATION_REQUIRED"
+  | "FEATURE_DISABLED"
+  | "EMAIL_TRANSPORT_UNAVAILABLE";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;

@@ -6,7 +6,7 @@ import { hasFullAccountAccess, toPolicyActor } from "../policy/account-policy.js
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { decodeActivityStartsCursor, encodeActivityStartsCursor } from "./activity-cursor.js";
 import { activityForbidden, activityKycRequired, activityNotFound } from "./activity-errors.js";
-import type { ActivityKycEnforcementContext } from "./activity-kyc.js";
+import { toKycTrustSnapshot, type ActivityKycEnforcementContext } from "./activity-kyc.js";
 import {
   activityPublicSelect,
   hostPreviewForViewer,
@@ -25,12 +25,18 @@ import {
   type MyActivityRsvpDto,
 } from "./activity.dto.js";
 import type { MyRsvpListQuery } from "./activity.validation.js";
+import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
 
 export class ActivityRsvpService {
+  private readonly notifications: NotificationEmitter;
+
   constructor(
     private readonly db: DatabaseClient,
     private readonly kyc: ActivityKycEnforcementContext,
-  ) {}
+    notifications?: NotificationEmitter,
+  ) {
+    this.notifications = notifications ?? new NotificationEmitter(db);
+  }
 
   async rsvp(viewer: User, activityId: string) {
     this.assertBrowse(viewer);
@@ -74,7 +80,7 @@ export class ActivityRsvpService {
           waitlistEnabled: activity.waitlistEnabled,
           existingState: existing?.state ?? null,
           mode: activity.mode,
-          identityVerificationStatus: viewer.identityVerificationStatus,
+          kycTrust: toKycTrustSnapshot(viewer),
           kyc: this.kyc,
         });
 
@@ -115,6 +121,14 @@ export class ActivityRsvpService {
                   joinedAt: now,
                 },
               });
+          await this.notifications.emitInTransaction(tx, {
+            recipientId: viewer.id,
+            type: "ACTIVITY_RSVP_WAITLISTED",
+            sourceId: activityId,
+            title: "Added to waitlist",
+            body: "You are waitlisted for this activity.",
+            dedupeKey: `activity-rsvp:waitlisted:${activityId}:${viewer.id}`,
+          });
           return toMyParticipationDto(saved);
         }
 
@@ -137,6 +151,14 @@ export class ActivityRsvpService {
                 joinedAt: now,
               },
             });
+        await this.notifications.emitInTransaction(tx, {
+          recipientId: viewer.id,
+          type: "ACTIVITY_RSVP_CONFIRMED",
+          sourceId: activityId,
+          title: "RSVP confirmed",
+          body: "Your spot is confirmed for this activity.",
+          dedupeKey: `activity-rsvp:confirmed:${activityId}:${viewer.id}`,
+        });
         return toMyParticipationDto(saved);
       });
     } catch (err) {
@@ -186,7 +208,18 @@ export class ActivityRsvpService {
 
       let promoted = false;
       if (wasConfirmed && activity.status === "PUBLISHED") {
-        promoted = await this.tryPromoteHead(tx, activity);
+        const promotedUserId = await this.tryPromoteHead(tx, activity);
+        promoted = promotedUserId !== null;
+        if (promotedUserId) {
+          await this.notifications.emitInTransaction(tx, {
+            recipientId: promotedUserId,
+            type: "ACTIVITY_WAITLIST_PROMOTED",
+            sourceId: activity.id,
+            title: "Waitlist spot opened",
+            body: "You are now confirmed for this activity.",
+            dedupeKey: `activity-waitlist-promoted:${activity.id}:${promotedUserId}`,
+          });
+        }
       }
       return { left: true as const, promoted };
     });
@@ -270,7 +303,7 @@ export class ActivityRsvpService {
       mode: "IN_PERSON" | "VIRTUAL" | "HYBRID";
       capacity: number;
     },
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     const confirmedCount = await tx.activityParticipation.count({
       where: { activityId: activity.id, state: "CONFIRMED" },
     });
@@ -287,6 +320,9 @@ export class ActivityRsvpService {
             suspendedAt: true,
             deletedAt: true,
             identityVerificationStatus: true,
+            identityVerificationApprovedAt: true,
+            identityVerificationValidUntil: true,
+            identityVerificationRevokedAt: true,
           },
         },
       },
@@ -308,7 +344,7 @@ export class ActivityRsvpService {
               deletedAt: next.user.deletedAt,
             }),
             blockedWithHost: blocked,
-            identityVerificationStatus: next.user.identityVerificationStatus,
+            kycTrust: toKycTrustSnapshot(next.user),
           }
         : null,
       mode: activity.mode,
@@ -316,14 +352,14 @@ export class ActivityRsvpService {
     });
 
     if (decision.action !== "promote" || !next) {
-      return false;
+      return null;
     }
 
     await tx.activityParticipation.update({
       where: { id: next.id },
       data: { state: "CONFIRMED", waitlistPosition: null },
     });
-    return true;
+    return next.user.id;
   }
 
   private assertBrowse(viewer: User): void {

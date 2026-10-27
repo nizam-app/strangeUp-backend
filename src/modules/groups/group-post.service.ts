@@ -1,5 +1,7 @@
 import { Prisma, type User } from "../../../generated/prisma/client.js";
+import type { AppEnv } from "../../config/env.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
+import { enrichGroupPostDto } from "../group-content/group-post-enrichment.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { decodeGroupPinnedCursor, encodeGroupPinnedCursor } from "./group-cursor.js";
@@ -23,7 +25,10 @@ import type {
 } from "./group.validation.js";
 
 export class GroupPostService {
-  constructor(private readonly db: DatabaseClient) {}
+  constructor(
+    private readonly db: DatabaseClient,
+    private readonly env: AppEnv,
+  ) {}
 
   async listPosts(
     viewer: User,
@@ -81,7 +86,6 @@ export class GroupPostService {
       },
     });
 
-    const viewerSnapshot = toDiscoverUserSnapshot(viewer);
     const page = rows.slice(0, limit);
     const posts: GroupPostDto[] = [];
     for (const row of page) {
@@ -89,24 +93,8 @@ export class GroupPostService {
       if (blocked) {
         continue;
       }
-      posts.push({
-        postId: row.id,
-        groupId: row.groupId,
-        author: toGroupUserPreview(
-          viewerSnapshot,
-          toDiscoverUserSnapshot(row.author),
-          row.author.profile,
-          false,
-        ),
-        body: row.body,
-        activityId: row.activityId,
-        pinned: row.pinnedAt !== null,
-        likeCount: row._count.likes,
-        commentCount: row._count.comments,
-        likedByMe: row.likes.length > 0,
-        createdAt: row.createdAt.toISOString(),
-        updatedAt: row.updatedAt.toISOString(),
-      });
+      const base = this.toPostDto(viewer, row);
+      posts.push(await enrichGroupPostDto(this.db, this.env, viewer.id, base));
     }
     const last = page[page.length - 1];
     return {
@@ -157,24 +145,13 @@ export class GroupPostService {
         _count: { select: { likes: true, comments: { where: { removedAt: null } } } },
       },
     });
-    return {
-      postId: row.id,
-      groupId: row.groupId,
-      author: toGroupUserPreview(
-        toDiscoverUserSnapshot(viewer),
-        toDiscoverUserSnapshot(row.author),
-        row.author.profile,
-        false,
-      ),
-      body: row.body,
-      activityId: row.activityId,
-      pinned: false,
-      likeCount: 0,
-      commentCount: 0,
-      likedByMe: false,
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
+    const base = this.toPostDto(viewer, {
+      ...row,
+      pinnedAt: null,
+      _count: { likes: 0, comments: 0 },
+      likes: [],
+    });
+    return enrichGroupPostDto(this.db, this.env, viewer.id, base);
   }
 
   async patchPost(
@@ -198,7 +175,7 @@ export class GroupPostService {
         likes: { where: { userId: viewer.id }, select: { userId: true } },
       },
     });
-    return this.toPostDto(viewer, row);
+    return enrichGroupPostDto(this.db, this.env, viewer.id, this.toPostDto(viewer, row));
   }
 
   async removePost(viewer: User, groupId: string, postId: string): Promise<{ removed: true }> {
@@ -244,7 +221,7 @@ export class GroupPostService {
         likes: { where: { userId: viewer.id }, select: { userId: true } },
       },
     });
-    return this.toPostDto(viewer, row);
+    return enrichGroupPostDto(this.db, this.env, viewer.id, this.toPostDto(viewer, row));
   }
 
   async listComments(
@@ -470,6 +447,8 @@ export class GroupPostService {
       likedByMe: row.likes.length > 0,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      photo: null,
+      poll: null,
     };
   }
 }

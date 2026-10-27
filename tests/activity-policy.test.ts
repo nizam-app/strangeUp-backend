@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { IdentityVerificationStatus } from "../generated/prisma/client.js";
 import { hasCurrentTrustedKycForEnforcement } from "../src/modules/activities/activity-kyc.js";
 import {
   canAccessMeetingDetails,
@@ -13,16 +14,51 @@ import {
 const kycDev = { isProduction: false, kycProviderEnabled: false };
 const kycProdClosed = { isProduction: true, kycProviderEnabled: false };
 
+function kycTrust(status: IdentityVerificationStatus) {
+  return {
+    identityVerificationStatus: status,
+    identityVerificationApprovedAt: status === "APPROVED" ? new Date() : null,
+    identityVerificationValidUntil: null,
+    identityVerificationRevokedAt: null,
+  };
+}
+
 describe("activity KYC enforcement", () => {
   it("accepts APPROVED only outside production fail-closed", () => {
-    expect(hasCurrentTrustedKycForEnforcement("APPROVED", kycDev)).toBe(true);
-    expect(hasCurrentTrustedKycForEnforcement("PENDING", kycDev)).toBe(false);
-    expect(hasCurrentTrustedKycForEnforcement("REJECTED", kycDev)).toBe(false);
-    expect(hasCurrentTrustedKycForEnforcement("NOT_STARTED", kycDev)).toBe(false);
+    expect(hasCurrentTrustedKycForEnforcement(kycTrust("APPROVED"), kycDev)).toBe(true);
+    expect(hasCurrentTrustedKycForEnforcement(kycTrust("PENDING"), kycDev)).toBe(false);
+    expect(hasCurrentTrustedKycForEnforcement(kycTrust("REJECTED"), kycDev)).toBe(false);
+    expect(hasCurrentTrustedKycForEnforcement(kycTrust("NOT_STARTED"), kycDev)).toBe(false);
   });
 
   it("fails closed in production without a provider", () => {
-    expect(hasCurrentTrustedKycForEnforcement("APPROVED", kycProdClosed)).toBe(false);
+    expect(hasCurrentTrustedKycForEnforcement(kycTrust("APPROVED"), kycProdClosed)).toBe(false);
+  });
+
+  it("denies revoked or expired validity windows", () => {
+    expect(
+      hasCurrentTrustedKycForEnforcement(
+        {
+          identityVerificationStatus: "APPROVED",
+          identityVerificationApprovedAt: new Date(),
+          identityVerificationValidUntil: new Date("2020-01-01T00:00:00.000Z"),
+          identityVerificationRevokedAt: null,
+        },
+        kycDev,
+        new Date(),
+      ),
+    ).toBe(false);
+    expect(
+      hasCurrentTrustedKycForEnforcement(
+        {
+          identityVerificationStatus: "APPROVED",
+          identityVerificationApprovedAt: new Date(),
+          identityVerificationValidUntil: null,
+          identityVerificationRevokedAt: new Date(),
+        },
+        kycDev,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -57,13 +93,13 @@ describe("activity state and join decisions", () => {
       waitlistEnabled: true,
       existingState: null,
       mode: "IN_PERSON" as const,
-      identityVerificationStatus: "NOT_STARTED" as const,
+      kycTrust: kycTrust("NOT_STARTED"),
       kyc: kycDev,
     };
     expect(resolveJoinPath(base)).toBe("kyc_required");
     expect(resolveJoinPath({ ...base, confirmedCount: 8 })).toBe("waitlist");
     expect(resolveJoinPath({ ...base, mode: "VIRTUAL" })).toBe("confirm");
-    expect(resolveJoinPath({ ...base, identityVerificationStatus: "APPROVED" })).toBe("confirm");
+    expect(resolveJoinPath({ ...base, kycTrust: kycTrust("APPROVED") })).toBe("confirm");
     expect(resolveJoinPath({ ...base, status: "DRAFT" })).toBe("closed");
     expect(resolveJoinPath({ ...base, isHost: true })).toBe("host");
   });
@@ -72,7 +108,7 @@ describe("activity state and join decisions", () => {
     const queued = {
       accountEligible: true,
       blockedWithHost: false,
-      identityVerificationStatus: "NOT_STARTED" as const,
+      kycTrust: kycTrust("NOT_STARTED"),
     };
     expect(
       decideWaitlistPromotion({
@@ -85,7 +121,7 @@ describe("activity state and join decisions", () => {
     expect(
       decideWaitlistPromotion({
         hasOpenSeat: true,
-        nextQueued: { ...queued, identityVerificationStatus: "APPROVED" },
+        nextQueued: { ...queued, kycTrust: kycTrust("APPROVED") },
         mode: "IN_PERSON",
         kyc: kycDev,
       }),
@@ -93,7 +129,7 @@ describe("activity state and join decisions", () => {
     expect(
       decideWaitlistPromotion({
         hasOpenSeat: true,
-        nextQueued: { ...queued, blockedWithHost: true, identityVerificationStatus: "APPROVED" },
+        nextQueued: { ...queued, blockedWithHost: true, kycTrust: kycTrust("APPROVED") },
         mode: "IN_PERSON",
         kyc: kycDev,
       }),
@@ -106,13 +142,13 @@ describe("activity state and join decisions", () => {
       participationState: "CONFIRMED" as const,
       activityStatus: "PUBLISHED" as const,
       mode: "IN_PERSON" as const,
-      identityVerificationStatus: "APPROVED" as const,
+      kycTrust: kycTrust("APPROVED"),
       accountEligible: true,
       blockedWithHost: false,
       kyc: kycDev,
     };
     expect(canAccessMeetingDetails(base)).toBe(true);
-    expect(canAccessMeetingDetails({ ...base, identityVerificationStatus: "PENDING" })).toBe(false);
+    expect(canAccessMeetingDetails({ ...base, kycTrust: kycTrust("PENDING") })).toBe(false);
     expect(canAccessMeetingDetails({ ...base, participationState: "WAITLISTED" })).toBe(false);
     expect(canAccessMeetingDetails({ ...base, isHost: true, participationState: null })).toBe(true);
     expect(canAccessMeetingDetails({ ...base, blockedWithHost: true })).toBe(false);

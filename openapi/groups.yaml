@@ -4,8 +4,9 @@ info:
   version: 0.1.0
   description: >
     Task 012 group discovery, membership, posts, group chat, and linked activities.
-    No verified-community badge, nearby distance, stories, polls, photo posts,
-    E2EE, or presence. Group membership is not activity RSVP or KYC approval.
+    No verified-community badge, nearby distance, E2EE, or presence.
+    Task 016 stories/polls/photo posts are documented in openapi/group-content.yaml
+    and disabled by default (D-06). Group membership is not activity RSVP or KYC approval.
 servers:
   - url: http://localhost:3000
 paths:

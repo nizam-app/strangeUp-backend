@@ -5,7 +5,7 @@ import type { AppEnv } from "../../config/env.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { passwordChangeBodySchema } from "../auth/auth.validation.js";
-import { checkRateLimit } from "../auth/rate-limit.js";
+import { checkRateLimit, throwIfRateLimited } from "../auth/rate-limit.js";
 import { canChangePassword, toPolicyActor } from "../policy/account-policy.js";
 import { MeService } from "./me.service.js";
 import { profilePatchSchema } from "./me.validation.js";
@@ -57,22 +57,20 @@ export function createMeController(deps: {
       }
 
       const ip = clientIp(req);
-      const ipLimit = checkRateLimit(
-        `password-change:ip:${ip}`,
-        deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `password-change:ip:${ip}`,
+          deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_IP,
+          60_000,
+        ),
       );
-      if (!ipLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
-      const userLimit = checkRateLimit(
-        `password-change:user:${req.authUser.id}`,
-        deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `password-change:user:${req.authUser.id}`,
+          deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_CHANGE_PER_USER,
+          60_000,
+        ),
       );
-      if (!userLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
 
       const body = passwordChangeBodySchema.parse(req.body);
       await deps.authService.changePassword(

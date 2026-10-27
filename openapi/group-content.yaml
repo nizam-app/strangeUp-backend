@@ -1,0 +1,70 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Group Interactive Content API (Task 016)
+  version: 0.1.0
+  description: >
+    Group photo attachments, 24h stories, polls, and content reports.
+    **Default activation: OFF** (`GROUP_COMMUNITY_INTERACTIVE_ENABLED=false`, D-06 provisional).
+    Routes return 403 FEATURE_DISABLED until owner approves policy. Home stories row stays DEFERRED.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/groups/{groupId}/posts/{postId}/media:
+    post:
+      summary: Attach one processed photo to own visible post (member, author)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: mediaId + contentPath }
+        "403": { description: FEATURE_DISABLED or forbidden }
+        "409": { description: Post already has photo }
+  /v1/groups/{groupId}/posts/{postId}/media/{mediaId}:
+    get:
+      summary: Stream post photo bytes (active member, block-safe)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: image/jpeg|png|webp }
+        "404": { description: Not found / unauthorized / removed }
+    delete:
+      summary: Remove photo (author or moderator)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: removed }
+  /v1/groups/{groupId}/stories:
+    get:
+      summary: List non-expired visible group stories for members
+      security: [{ bearerAuth: [] }]
+    post:
+      summary: Create 24h story with validated image
+      security: [{ bearerAuth: [] }]
+  /v1/groups/{groupId}/stories/{storyId}/media:
+    get:
+      summary: Stream story image (expires at read time)
+      security: [{ bearerAuth: [] }]
+  /v1/groups/{groupId}/stories/{storyId}:
+    delete:
+      summary: Remove story (author or moderator)
+      security: [{ bearerAuth: [] }]
+  /v1/groups/{groupId}/posts/{postId}/poll:
+    post:
+      summary: Attach poll to own post (2–6 options, closesAt)
+      security: [{ bearerAuth: [] }]
+    get:
+      summary: Poll results (aggregates only; no voter identities)
+      security: [{ bearerAuth: [] }]
+  /v1/groups/{groupId}/posts/{postId}/poll/vote:
+    put:
+      summary: Cast single immutable vote
+      security: [{ bearerAuth: [] }]
+  /v1/groups/{groupId}/content-reports:
+    post:
+      summary: Member report (bounded reason enum)
+      security: [{ bearerAuth: [] }]
+    get:
+      summary: OPEN reports for owner/moderator
+      security: [{ bearerAuth: [] }]
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,7 +1,7 @@
 # KYC / Verification API Candidates (NOT IMPLEMENTED)
 
-**Status:** PROPOSED contract sketches — Tasks **002B.3A / 002B.3A1 / 002B.3A2**. **KYC-01, KYC-03, KYC-05** and **KYC-ENF-01..05** **APPROVED** (policy); all routes **NOT IMPLEMENTED**.
-**Authoritative implemented routes:** `docs/api/CURRENT_APIS.md` (no verification session routes are LIVE).
+**Status:** Historical PROPOSED sketches — Tasks **002B.3A***. **Task 021** implemented core session/status/webhook routes in `CURRENT_APIS.md` (mock adapter; Veriff **BLOCKED BY OWNER**). Treat this file as supplemental detail only where not contradicted by `CURRENT_APIS.md`.
+**Authoritative implemented routes:** `docs/api/CURRENT_APIS.md`.
 **Enforcement:** Future activity/meetup mutating APIs must apply `KYC_OWNER_DECISIONS_002B3A2.md` §C at server; operation names **OPEN** (`D-09-kyc-enforcement-ops`).
 
 | Symbol | Meaning |

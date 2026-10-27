@@ -17,9 +17,16 @@ const eligible = {
   suspendedAt: null,
   deletedAt: null,
   identityVerificationStatus: "NOT_STARTED" as const,
+  identityVerificationApprovedAt: null,
+  identityVerificationValidUntil: null,
+  identityVerificationRevokedAt: null,
 };
 
-const kycApproved = { ...eligible, identityVerificationStatus: "APPROVED" as const };
+const kycApproved = {
+  ...eligible,
+  identityVerificationStatus: "APPROVED" as const,
+  identityVerificationApprovedAt: new Date(),
+};
 const other = { ...eligible, userId: "22222222-2222-4222-8222-222222222222" };
 
 describe("social policy", () => {

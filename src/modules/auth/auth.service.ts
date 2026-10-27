@@ -15,9 +15,16 @@ import {
   verifyPassword,
 } from "./crypto.js";
 import type { EmailSender } from "./email-sender.js";
+import {
+  authEmailSubject,
+  buildAuthChallengeEmailText,
+  buildPriorEmailChangedNoticeText,
+} from "./auth-email-content.js";
+import { isAppError } from "../../common/errors/app-error.js";
 import { TokenService } from "./token.service.js";
-import { validateRequiredConsents } from "./auth.validation.js";
 import { hasFullAccountAccess, toPolicyActor } from "../policy/account-policy.js";
+import type { Logger } from "pino";
+import type { TransactionalEmailMode } from "./email-sender.js";
 
 export type RegisterInput = {
   firstName: string;
@@ -25,7 +32,7 @@ export type RegisterInput = {
   email: string;
   password: string;
   dateOfBirth: string;
-  consents: Array<{ type: ConsentType; version: string }>;
+  consents: Array<{ consentType: ConsentType; documentId: string; versionId: string }>;
   ipHash?: string;
 };
 
@@ -57,8 +64,20 @@ export class AuthService {
     private readonly db: DatabaseClient,
     private readonly authEnv: AuthEnv,
     private readonly emailSender: EmailSender,
+    private readonly logger?: Logger,
   ) {
     this.tokenService = new TokenService(authEnv);
+  }
+
+  private emailDeliveryLabel(): "DEV_ONLY" | "PROVIDER" | "UNAVAILABLE" {
+    const mode: TransactionalEmailMode = this.emailSender.mode;
+    if (mode === "dev_stub") {
+      return "DEV_ONLY";
+    }
+    if (mode === "provider") {
+      return "PROVIDER";
+    }
+    return "UNAVAILABLE";
   }
 
   async register(input: RegisterInput): Promise<{
@@ -66,11 +85,6 @@ export class AuthService {
     accountStatus: AccountStatus;
     emailVerificationRequired: true;
   }> {
-    const consentError = validateRequiredConsents(input.consents);
-    if (consentError) {
-      throw new AppError("VALIDATION_ERROR", consentError, 400);
-    }
-
     const birthDate = parseBirthDateOnly(input.dateOfBirth);
     if (!birthDate) {
       throw new AppError("VALIDATION_ERROR", "Invalid dateOfBirth (expected YYYY-MM-DD)", 400);
@@ -114,8 +128,10 @@ export class AuthService {
             },
             consentRecords: {
               create: input.consents.map((c) => ({
-                consentType: c.type,
-                documentVersion: c.version,
+                consentType: c.consentType,
+                documentId: c.documentId,
+                documentVersion: c.versionId,
+                acceptanceContext: "REGISTRATION",
                 ipHash: input.ipHash ?? null,
               })),
             },
@@ -297,7 +313,7 @@ export class AuthService {
       where: { userId: user.id, type: "PASSWORD_RESET", consumedAt: null },
     });
 
-    await this.db.authChallenge.create({
+    const challenge = await this.db.authChallenge.create({
       data: {
         userId: user.id,
         type: "PASSWORD_RESET",
@@ -307,21 +323,30 @@ export class AuthService {
       },
     });
 
-    const baseUrl = this.authEnv.PUBLIC_APP_BASE_URL;
-    const linkHint =
-      baseUrl !== undefined
-        ? `${baseUrl.replace(/\/$/, "")}/reset-password?token=${encodeURIComponent(rawToken)}`
-        : null;
-    const text =
-      linkHint !== null
-        ? `Use this link to reset your password (dev delivery): ${linkHint}`
-        : `Your password reset token (dev delivery): ${rawToken}`;
-
-    await this.emailSender.send({
-      to: user.email,
-      subject: "Reset your StrangeUp password",
-      text,
+    const text = buildAuthChallengeEmailText({
+      purpose: "password_reset",
+      token: rawToken,
+      publicAppBaseUrl: this.authEnv.PUBLIC_APP_BASE_URL,
+      path: "/reset-password",
+      allowDevTokenFallback: this.emailSender.mode === "dev_stub",
     });
+
+    try {
+      await this.emailSender.send({
+        to: user.email,
+        subject: authEmailSubject("password_reset"),
+        text,
+        idempotencyKey: `auth:password-reset:${challenge.id}`,
+      });
+    } catch (err) {
+      await this.db.authChallenge.deleteMany({
+        where: { userId: user.id, type: "PASSWORD_RESET", consumedAt: null },
+      });
+      if (isAppError(err) && err.code === "EMAIL_TRANSPORT_UNAVAILABLE") {
+        return;
+      }
+      throw err;
+    }
   }
 
   async confirmPasswordReset(token: string, newPassword: string): Promise<void> {
@@ -376,6 +401,216 @@ export class AuthService {
     if (!consumed) {
       throw new AppError("AUTH_CHALLENGE_EXPIRED", "Reset link is invalid or expired", 400);
     }
+  }
+
+  async requestEmailChange(
+    userId: string,
+    currentPassword: string,
+    newEmailRaw: string,
+  ): Promise<{
+    pending: true;
+    emailDelivery: "DEV_ONLY" | "PROVIDER" | "UNAVAILABLE";
+    expiresInSeconds: number;
+  }> {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      include: { passwordCredential: true },
+    });
+
+    const emailDelivery = this.emailDeliveryLabel();
+
+    const noopResponse = {
+      pending: true as const,
+      emailDelivery,
+      expiresInSeconds: this.authEnv.AUTH_CHALLENGE_TTL_SECONDS,
+    };
+
+    if (!user?.passwordCredential || isUserAuthBlocked(user) || user.emailVerifiedAt === null) {
+      return noopResponse;
+    }
+
+    const passwordOk = await verifyPassword(currentPassword, user.passwordCredential.passwordHash);
+    if (!passwordOk) {
+      throw new AppError("AUTH_INVALID_CREDENTIALS", "Invalid current password", 401);
+    }
+
+    const newEmail = newEmailRaw.trim();
+    const newEmailNormalized = normalizeEmail(newEmail);
+    if (newEmailNormalized === user.emailNormalized) {
+      throw new AppError("VALIDATION_ERROR", "New email must differ from current email", 400);
+    }
+
+    const taken = await this.db.user.findUnique({
+      where: { emailNormalized: newEmailNormalized },
+      select: { id: true },
+    });
+    if (taken && taken.id !== userId) {
+      return noopResponse;
+    }
+
+    const rawToken = generateSecureToken(32);
+    const secretHash = hashSha256(rawToken);
+    const expiresAt = new Date(Date.now() + this.authEnv.AUTH_CHALLENGE_TTL_SECONDS * 1000);
+
+    await this.db.authChallenge.deleteMany({
+      where: { userId, type: "EMAIL_CHANGE", consumedAt: null },
+    });
+
+    const challengeTarget = JSON.stringify({
+      normalized: newEmailNormalized,
+      display: newEmail,
+    });
+
+    const challenge = await this.db.authChallenge.create({
+      data: {
+        userId,
+        type: "EMAIL_CHANGE",
+        target: challengeTarget,
+        secretHash,
+        expiresAt,
+      },
+    });
+
+    const text = buildAuthChallengeEmailText({
+      purpose: "email_change_confirm",
+      token: rawToken,
+      publicAppBaseUrl: this.authEnv.PUBLIC_APP_BASE_URL,
+      path: "/confirm-email-change",
+      allowDevTokenFallback: this.emailSender.mode === "dev_stub",
+    });
+
+    try {
+      await this.emailSender.send({
+        to: newEmail,
+        subject: authEmailSubject("email_change_confirm"),
+        text,
+        idempotencyKey: `auth:email-change:${challenge.id}`,
+      });
+    } catch (err) {
+      await this.db.authChallenge.deleteMany({
+        where: { userId, type: "EMAIL_CHANGE", consumedAt: null },
+      });
+      throw err;
+    }
+
+    return {
+      pending: true as const,
+      emailDelivery: this.emailDeliveryLabel(),
+      expiresInSeconds: this.authEnv.AUTH_CHALLENGE_TTL_SECONDS,
+    };
+  }
+
+  async confirmEmailChange(token: string): Promise<{
+    success: true;
+    sessionsRevoked: true;
+    reLoginRequired: true;
+  }> {
+    const tokenHash = hashSha256(token);
+    const now = new Date();
+    const challenge = await this.db.authChallenge.findFirst({
+      where: {
+        type: "EMAIL_CHANGE",
+        secretHash: tokenHash,
+        consumedAt: null,
+        expiresAt: { gt: now },
+      },
+      include: { user: true },
+    });
+
+    if (!challenge?.user) {
+      throw new AppError("AUTH_CHALLENGE_EXPIRED", "Email change link is invalid or expired", 400);
+    }
+
+    const user = challenge.user;
+    if (isUserAuthBlocked(user)) {
+      throw new AppError("AUTH_CHALLENGE_EXPIRED", "Email change link is invalid or expired", 400);
+    }
+
+    let newEmailNormalized: string;
+    let newEmailDisplay: string;
+    try {
+      const parsed = JSON.parse(challenge.target) as { normalized?: string; display?: string };
+      if (!parsed.normalized || !parsed.display) {
+        throw new Error("invalid");
+      }
+      newEmailNormalized = parsed.normalized;
+      newEmailDisplay = parsed.display;
+    } catch {
+      throw new AppError("AUTH_CHALLENGE_EXPIRED", "Email change link is invalid or expired", 400);
+    }
+
+    const taken = await this.db.user.findFirst({
+      where: {
+        emailNormalized: newEmailNormalized,
+        id: { not: user.id },
+      },
+      select: { id: true },
+    });
+    if (taken) {
+      throw new AppError("AUTH_CHALLENGE_EXPIRED", "Email change link is invalid or expired", 400);
+    }
+
+    const priorEmail = user.email;
+
+    const applied = await this.db.$transaction(async (tx) => {
+      const mark = await tx.authChallenge.updateMany({
+        where: {
+          id: challenge.id,
+          type: "EMAIL_CHANGE",
+          secretHash: tokenHash,
+          consumedAt: null,
+          expiresAt: { gt: now },
+        },
+        data: { consumedAt: now },
+      });
+      if (mark.count !== 1) {
+        return false;
+      }
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          email: newEmailDisplay,
+          emailNormalized: newEmailNormalized,
+          emailVerifiedAt: now,
+        },
+      });
+      await tx.authChallenge.deleteMany({
+        where: { userId: user.id, type: "EMAIL_CHANGE", consumedAt: null },
+      });
+      await tx.session.updateMany({
+        where: { userId: user.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      return true;
+    });
+
+    if (!applied) {
+      throw new AppError("AUTH_CHALLENGE_EXPIRED", "Email change link is invalid or expired", 400);
+    }
+
+    try {
+      await this.emailSender.send({
+        to: priorEmail,
+        subject: "Your StrangeUp email was changed",
+        text: buildPriorEmailChangedNoticeText(),
+        idempotencyKey: `auth:prior-email-notice:${user.id}:${challenge.id}`,
+      });
+    } catch (err) {
+      this.logger?.warn(
+        {
+          event: "SECURITY_PRIOR_EMAIL_NOTICE_FAILED",
+          userId: user.id,
+          challengeId: challenge.id,
+        },
+        "Prior email address notice could not be handed to provider",
+      );
+      if (isAppError(err) && err.code === "EMAIL_TRANSPORT_UNAVAILABLE") {
+        return { success: true, sessionsRevoked: true, reLoginRequired: true };
+      }
+      throw err;
+    }
+
+    return { success: true, sessionsRevoked: true, reLoginRequired: true };
   }
 
   async changePassword(
@@ -544,7 +779,7 @@ export class AuthService {
       where: { userId, type: "EMAIL_VERIFY", consumedAt: null },
     });
 
-    await this.db.authChallenge.create({
+    const challenge = await this.db.authChallenge.create({
       data: {
         userId,
         type: "EMAIL_VERIFY",
@@ -554,11 +789,27 @@ export class AuthService {
       },
     });
 
-    await this.emailSender.send({
-      to: emailDisplay,
-      subject: "Verify your StrangeUp email",
-      text: `Your verification token (dev delivery): ${rawToken}`,
+    const text = buildAuthChallengeEmailText({
+      purpose: "email_verify",
+      token: rawToken,
+      publicAppBaseUrl: this.authEnv.PUBLIC_APP_BASE_URL,
+      path: "/verify-email",
+      allowDevTokenFallback: this.emailSender.mode === "dev_stub",
     });
+
+    try {
+      await this.emailSender.send({
+        to: emailDisplay,
+        subject: authEmailSubject("email_verify"),
+        text,
+        idempotencyKey: `auth:email-verify:${challenge.id}`,
+      });
+    } catch (err) {
+      await this.db.authChallenge.deleteMany({
+        where: { userId, type: "EMAIL_VERIFY", consumedAt: null },
+      });
+      throw err;
+    }
   }
 }
 

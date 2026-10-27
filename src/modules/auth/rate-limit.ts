@@ -1,31 +1,47 @@
-type Bucket = { count: number; resetAt: number };
+import { AppError } from "../../common/errors/app-error.js";
+import {
+  clearRateLimitStore,
+  getRateLimitStore,
+} from "../../infrastructure/rate-limit/store-registry.js";
+import type { RateLimitResult } from "../../infrastructure/rate-limit/types.js";
 
-const buckets = new Map<string, Bucket>();
+export type { RateLimitResult } from "../../infrastructure/rate-limit/types.js";
 
-export type RateLimitResult = { allowed: true } | { allowed: false; retryAfterSeconds: number };
+export {
+  configureRateLimitStore,
+  disconnectRateLimitStore,
+  resetRateLimitStoreForTests,
+} from "../../infrastructure/rate-limit/store-registry.js";
+export { resolveRateLimitStore } from "../../infrastructure/rate-limit/resolve-store.js";
+export { createInMemoryRateLimitStore } from "../../infrastructure/rate-limit/in-memory-store.js";
 
-export function checkRateLimit(
+/** @deprecated use `env.RATE_LIMIT_STORE === "memory" && !env.isProduction` in new code */
+export const RATE_LIMITER_IS_IN_MEMORY_ONLY = true as const;
+
+export async function checkRateLimit(
   key: string,
   limit: number,
   windowMs: number,
   now = Date.now(),
-): RateLimitResult {
-  const existing = buckets.get(key);
-  if (!existing || existing.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true };
+): Promise<RateLimitResult> {
+  return getRateLimitStore().check(key, limit, windowMs, now);
+}
+
+export function throwIfRateLimited(result: RateLimitResult): void {
+  if (result.allowed) {
+    return;
   }
-  if (existing.count >= limit) {
-    return {
-      allowed: false,
-      retryAfterSeconds: Math.max(1, Math.ceil((existing.resetAt - now) / 1000)),
-    };
+  if (result.reason === "store_unavailable") {
+    throw new AppError(
+      "SERVICE_UNAVAILABLE",
+      "Abuse protection is temporarily unavailable; try again later",
+      503,
+    );
   }
-  existing.count += 1;
-  return { allowed: true };
+  throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
 }
 
 /** Test helper */
 export function clearRateLimits(): void {
-  buckets.clear();
+  clearRateLimitStore();
 }

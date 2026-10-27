@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
@@ -7,6 +6,7 @@ import { toPolicyActor } from "../policy/account-policy.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { decodeActivityStartsCursor, encodeActivityStartsCursor } from "./activity-cursor.js";
 import { activityForbidden, activityKycRequired, activityNotFound } from "./activity-errors.js";
+import { toKycTrustSnapshot } from "./activity-kyc.js";
 import {
   activityPublicSelect,
   hostPreviewForViewer,
@@ -27,13 +27,13 @@ import {
   toPublicActivityDetail,
 } from "./activity.dto.js";
 import type { ActivityListQuery } from "./activity.validation.js";
-import type { LocalActivityCoverStorage } from "./activity-cover.storage.js";
+import type { ActivityCoverStorage } from "./activity-cover.storage.js";
 import type { ActivityKycEnforcementContext } from "./activity-kyc.js";
 
 export class ActivityService {
   constructor(
     private readonly db: DatabaseClient,
-    private readonly coverStorage: LocalActivityCoverStorage,
+    private readonly coverStorage: ActivityCoverStorage,
     private readonly kyc: ActivityKycEnforcementContext,
   ) {}
 
@@ -113,7 +113,7 @@ export class ActivityService {
       participationState: mine?.state ?? null,
       activityStatus: row.status,
       mode: row.mode,
-      identityVerificationStatus: viewer.identityVerificationStatus,
+      kycTrust: toKycTrustSnapshot(viewer),
       accountEligible: canBrowseActivities(toPolicyActor(viewer)),
       blockedWithHost: blocked,
       kyc: this.kyc,
@@ -151,7 +151,7 @@ export class ActivityService {
       participationState: mine?.state ?? null,
       activityStatus: row.status,
       mode: row.mode,
-      identityVerificationStatus: viewer.identityVerificationStatus,
+      kycTrust: toKycTrustSnapshot(viewer),
       accountEligible: canBrowseActivities(toPolicyActor(viewer)),
       blockedWithHost: blocked,
       kyc: this.kyc,
@@ -182,9 +182,7 @@ export class ActivityService {
     if (!row.coverStorageKey || !row.coverContentType) {
       throw activityNotFound();
     }
-    this.coverStorage.assertStorageKeyOwnedByHost(row.coverStorageKey, row.hostId);
-    const absolutePath = this.coverStorage.resolveAbsolutePath(row.coverStorageKey);
-    const buffer = await readFile(absolutePath);
+    const buffer = await this.coverStorage.readBytes(row.coverStorageKey, row.hostId);
     return { buffer, contentType: row.coverContentType };
   }
 

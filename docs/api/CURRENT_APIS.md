@@ -1,7 +1,9 @@
 # StrangeUp Backend — Currently Implemented APIs
 
-**Last updated:** 2026-10-27 (Task 012 — groups & communities; Neon `strangeup_test` integration **72 passed**, 1 skipped)
+**Last updated:** 2026-10-27 (through Task **021** — canonical consent + KYC verification; Tasks 019B/020 unchanged in behavior)
 **Maintainers:** Update this file in the **same change** as any API implementation, modification, or removal. See `AGENTS.md`.
+
+**Flutter integration:** Pair with `docs/api/FLUTTER_DEVELOPER_HANDOFF.md`. **This file wins** on route existence and HTTP shapes; handoff wins on product gating and DEFERRED UX.
 
 | Status | Meaning |
 |---|---|
@@ -12,7 +14,7 @@
 **Base URL (local):** `http://localhost:3000` (default `PORT` from env)
 **Product API prefix:** `/v1`
 
-**OpenAPI:** `openapi/foundation.yaml` (health), `openapi/identity.yaml` (auth + self account/profile), `openapi/activities.yaml` (Task 010), `openapi/social.yaml` (Task 011), `openapi/groups.yaml` (Task 012)
+**OpenAPI:** `openapi/foundation.yaml` (health), `openapi/identity.yaml` (auth + self account/profile), `openapi/settings.yaml` (Task 015), `openapi/activities.yaml` (Task 010), `openapi/social.yaml` (Task 011), `openapi/groups.yaml` (Task 012), `openapi/home.yaml` (Task 013), `openapi/notifications.yaml` (Task 013), `openapi/store.yaml` (Task 014), `openapi/jobs.yaml` (Task 014)
 
 ---
 
@@ -32,6 +34,30 @@ Error:
 
 - Request correlation: optional header `x-request-id` (generated if omitted).
 - Details: `docs/api/FOUNDATION_ENVELOPE.md`, `docs/api/CONVENTIONS.md`.
+
+---
+
+## Flutter quick index (LIVE routes by app area)
+
+| App area | Primary prefixes / paths | Section below |
+|---|---|---|
+| Health / ops | `/health/live`, `/health/ready` | Health |
+| Auth & session | `/v1/auth/*` | Auth |
+| Account, profile, settings, saved | `/v1/me/*` | Self account & profile; Settings hub |
+| Legal consent | `/v1/consents/required` | Consent registry |
+| KYC (ops-gated) | `/v1/me/verification/*`, webhook N/A for mobile | Identity verification |
+| Interests | `/v1/interests`, `/v1/me/interests` | Profile interests |
+| Discover & profiles | `/v1/discover/*`, `/v1/users/*` | Discovery & public profiles |
+| Activities | `/v1/activities/*`, `/v1/me/activities/*`, categories | Activities & meetups |
+| Social & DM | `/v1/users/*` (follow, wave, messages) | Social connections |
+| Groups | `/v1/groups/*`, `/v1/me/groups/*`, categories | Groups & communities |
+| Home & feed | `/v1/home`, `/v1/me/community-feed` | Home dashboard |
+| Notifications | `/v1/me/notifications/*` | In-app notifications |
+| Store | `/v1/store/*`, `/v1/me/store/*` | Store |
+| Jobs | `/v1/jobs/*`, `/v1/me/jobs/*`, applications | Jobs |
+| Membership | `/v1/membership/plans`, `/v1/me/membership` | Membership plans |
+
+**Not in table:** routes under **PLANNED** at end of doc; Task 016 group media routes require `GROUP_COMMUNITY_INTERACTIVE_ENABLED=true` (default off).
 
 ---
 
@@ -94,7 +120,7 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 }
 ```
 
-**Validation:** email format; password ≥8 with letter + number; `dateOfBirth` as `YYYY-MM-DD` (UTC calendar, leap-day safe); **not in the future**; **USA launch 18+**; all three consent types required. Consent `version` strings are **client-supplied** until counsel publishes canonical IDs (**release blocker**).
+**Validation:** email format; password ≥8 with letter + number; `dateOfBirth` as `YYYY-MM-DD` (UTC calendar, leap-day safe); **not in the future**; **USA launch 18+**; all three consent types required. Each consent `version` must match the server canonical registry (`GET /v1/consents/required`). **`CONSENT_ENFORCEMENT=strict`** (production default) rejects registration until counsel publishes **ACTIVE** version IDs; dev/test may use **`placeholder_allowed`** for engineering placeholders only.
 
 **Password storage:** scrypt with per-hash stored `N/r/p`; new credentials use **N=16384, r=8, p=5**. Older **p=1** hashes remain valid; successful **login** transparently rehashes to the preferred cost (no API shape change).
 
@@ -191,7 +217,7 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 
 **Response 202:** `{ "data": { "message": "If verification is required, instructions were sent." }, "meta": { ... } }`
 
-**Delivery:** development uses in-process email **stub** (logged/captured in tests, not vendor delivery).
+**Delivery:** `dev_stub` logs/captures only. `disabled` fail-closes with challenge rollback. `provider` hands off to **Resend** (`handed_to_provider` ≠ inbox delivery). Requires `RESEND_API_KEY`, `TRANSACTIONAL_EMAIL_FROM`, and `PUBLIC_APP_BASE_URL` in production.
 
 ---
 
@@ -234,7 +260,7 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 
 **Behavior:** issues `PASSWORD_RESET` `AuthChallenge` (hashed token, expiry, one-time use). Suspended/deleted/unknown emails receive the same HTTP response; no email sent when not eligible.
 
-**Delivery:** dev stub only — token in stub email body or link built from `PUBLIC_APP_BASE_URL` (never from `Host` header). **Not production-ready** until a real email provider is integrated.
+**Delivery:** dev stub only in non-production — link from `PUBLIC_APP_BASE_URL` when set; raw token only when dev stub fallback is allowed. Production without provider: enumeration-safe `202` but no challenge persisted if transport fails closed.
 
 **Tests:** `tests/integration/me.integration.test.ts` (I-N05, I-P06).
 
@@ -456,7 +482,7 @@ Returns all **10** options ordered by `sortOrder`. Custom/free-text interests ar
 
 #### Profile avatar (`/v1/me/profile/avatar`)
 
-**POST:** `multipart/form-data` with field name **`avatar`**; JPEG/PNG/WebP; max **5 MiB** upload. Server **decodes from bytes** (does not trust filename/declared MIME), rejects SVG/corrupt payloads, re-encodes to strip EXIF/GPS, and bounds dimensions/pixel count before write. **Development only:** local disk (`PROFILE_UPLOAD_DIR`, default `.data/profile-media`) — not approved for staging/production without object storage and moderation.
+**POST:** `multipart/form-data` with field name **`avatar`**; JPEG/PNG/WebP; max **5 MiB** upload. Server **decodes from bytes** (does not trust filename/declared MIME), rejects SVG/corrupt payloads, re-encodes to strip EXIF/GPS, and bounds dimensions/pixel count before write. Storage: **`MEDIA_STORAGE_BACKEND=local`** (default, `PROFILE_UPLOAD_DIR`) or **`s3`** (private bucket; server-side GET after auth — no public object URLs in DTOs). Production requires `s3` or non-`.data` local paths; live bucket activation is owner-gated (`docs/operations/MEDIA_OBJECT_STORAGE.md`).
 
 **GET:** re-encoded image bytes (`Cache-Control: private, no-store`); `404` when no avatar.
 
@@ -698,9 +724,72 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 **Not returned:** `verified`, `verifiedCommunity`, distance/nearby, E2EE, typing, presence, meeting instructions, email/DOB/KYC, cover storage keys.
 
-**Deferred LIVE routes:** group stories, photo posts, polls, Home Dashboard aggregate.
-
 **Tests:** `tests/group-policy.test.ts`, `tests/group.validation.test.ts`, `tests/group.dto.test.ts`, `tests/group-query.test.ts`, `tests/group-cover-storage.test.ts`; `tests/integration/groups.integration.test.ts`.
+
+---
+
+### Group stories, photo posts & polls (Task 016)
+
+**Policy:** `docs/decisions/D-06-COMMUNITY-MEDIA-TASK016.md` (**PROVISIONAL**; D-06 **not** owner-approved).  
+**Activation:** `GROUP_COMMUNITY_INTERACTIVE_ENABLED` defaults **`false`**. When false, all routes below return **`403 FEATURE_DISABLED`**. When true (staging/tests only until owner sign-off), member-only ACL + blocks apply.  
+**Storage:** local disk under `GROUP_UPLOAD_DIR` (**DEV_ONLY**); Sharp re-encode (Task 008A limits).  
+**OpenAPI:** `openapi/group-content.yaml`
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/groups/:groupId/posts/:postId/media` | Multipart field **`image`**; one photo per post; author only |
+| `GET` | `/v1/groups/:groupId/posts/:postId/media/:mediaId` | Stream bytes; active member; blocked author → `404` |
+| `DELETE` | `/v1/groups/:groupId/posts/:postId/media/:mediaId` | Author or moderator remove |
+| `GET` | `/v1/groups/:groupId/stories` | Non-expired visible stories (member) |
+| `POST` | `/v1/groups/:groupId/stories` | Multipart **`image`**; `expiresAt = createdAt + 24h` (server) |
+| `GET` | `/v1/groups/:groupId/stories/:storyId/media` | Read-time expiry deny → `404` |
+| `DELETE` | `/v1/groups/:groupId/stories/:storyId` | Author or moderator remove |
+| `POST` | `/v1/groups/:groupId/posts/:postId/poll` | `{ closesAt, options[2..6] }` on own post |
+| `GET` | `/v1/groups/:groupId/posts/:postId/poll` | Aggregated counts; `myVoteOptionId` for caller only |
+| `PUT` | `/v1/groups/:groupId/posts/:postId/poll/vote` | `{ optionId }`; one vote; closed poll → `409` |
+| `POST` | `/v1/groups/:groupId/content-reports` | `{ targetType, targetId, reason, detail? }` |
+| `GET` | `/v1/groups/:groupId/content-reports` | OPEN reports; owner/moderator only |
+
+**Post/feed DTOs:** `photo` and `poll` on `GroupPostDto` are **`null`** unless interactive flag is **on**. Home **`stories.status` stays `DEFERRED`** (no fabricated Home story list).
+
+**Ops:** manual expiry cleanup `npx tsx scripts/cleanup-group-expired-content.ts [--apply]` (non-production; dry-run default).
+
+**Schema:** migration `20261027240000_community_stories_media_polls`.
+
+**Tests:** `tests/group-content.policy.test.ts`; `tests/integration/group-content.integration.test.ts` (T016-G01, T016-P01, T016-S01, T016-V01, T016-H01).
+
+---
+
+### Home dashboard & community feed (Task 013)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v1/home` | Bearer | Bounded dashboard composition (groups, feed preview, upcoming linked activities, people, activities, featured, unread count; stories deferred) |
+| `GET` | `/v1/me/community-feed` | Bearer | Cross-group feed from ACTIVE memberships; cursor pagination; optional `groupId` filter |
+
+**Privacy:** No coordinates, distances, online status, or meeting instructions in dashboard/feed DTOs. Blocked authors omitted; revoked membership excludes posts on read. Linked activities use Task 010 public cards only.
+
+**Stories:** `data.stories.status = "DEFERRED"` — no fake 24h story list.
+
+**Tests:** `tests/notification-cursor.test.ts`; `tests/integration/home.integration.test.ts` (T013-H01–H04).
+
+---
+
+### In-app notifications (Task 013)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v1/me/notifications` | Bearer | Inbox with `unreadCount`; query `cursor`, `limit`, `unreadOnly=true` |
+| `POST` | `/v1/me/notifications/{notificationId}/read` | Bearer | Idempotent mark read (recipient-only) |
+| `POST` | `/v1/me/notifications/read-all` | Bearer | Mark all unread for caller |
+
+**Emitted types (real hooks only):** `MESSAGE_REQUEST_RECEIVED`, `MESSAGE_REQUEST_ACCEPTED`, `DIRECT_MESSAGE_RECEIVED` (aggregated per conversation), `GROUP_MEMBERSHIP_APPROVED`, `GROUP_MEMBERSHIP_DECLINED`, `ACTIVITY_RSVP_CONFIRMED`, `ACTIVITY_RSVP_WAITLISTED`, `ACTIVITY_WAITLIST_PROMOTED`.
+
+**Not emitted:** KYC success, Stripe, scheduled reminders, push, fabricated invitations.
+
+**Schema:** migration `20261027210000_user_notifications` → `UserNotification` + dedupe key.
+
+**Retention:** provisional 365-day default documented in `OPEN_QUESTIONS.md` — owner policy OPEN.
 
 ---
 
@@ -747,15 +836,136 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 ---
 
+### Store — official merchandise (Task 014, Screens 20–22)
+
+**Auth:** Bearer access token; **full account** required (`AUTH_FORBIDDEN` 403 otherwise). **No checkout/payment/order routes.**
+
+**Schema:** migration `20261027220000_store_and_jobs` — categories (taxonomy seed only), products, variants, images, favorites, cart lines.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/store/categories` | Active category taxonomy |
+| `GET` | `/v1/store/products` | **PUBLISHED** products only; filters `q`, `category`, `size`, `color`; cursor pagination |
+| `GET` | `/v1/store/products/:productId` | Published detail + active variants (stock counts; no reservation) |
+| `GET` | `/v1/store/products/:productId/images/:imageId` | Sanitized catalog bytes when file exists locally |
+| `GET` | `/v1/me/store/favorites` | Self favorites (published only) |
+| `PUT` | `/v1/me/store/favorites/:productId` | Idempotent favorite |
+| `DELETE` | `/v1/me/store/favorites/:productId` | Idempotent unfavorite |
+| `GET` | `/v1/me/store/cart` | Self cart + `subtotalCents` + `checkout.status=UNAVAILABLE` |
+| `PUT` | `/v1/me/store/cart/items/:variantId` | Set quantity (`0` removes); server catalog price only |
+| `DELETE` | `/v1/me/store/cart/items/:variantId` | Remove line |
+| `DELETE` | `/v1/me/store/cart` | Clear cart (no orders) |
+
+**Not LIVE:** place order, payment intents, tax/shipping quotes, membership discounts, product reviews/ratings, verified seller badges, inventory reservation on cart mutation.
+
+**Empty state:** Fresh databases may return `products: []` until trusted catalog ingestion publishes SKUs.
+
+---
+
+### Jobs (Task 014, Screen 23)
+
+**Auth:** Bearer + full account. **No employer review APIs.** Applications stored in-platform only.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/jobs` | **PUBLISHED** open listings; filters; no distance/partner badges |
+| `GET` | `/v1/jobs/:jobId` | Published detail |
+| `POST` | `/v1/jobs/:jobId/applications` | Applicant submit; `employerDelivery.status=NOT_CONFIGURED` |
+| `GET` | `/v1/me/saved-jobs` | Saved published jobs |
+| `PUT` | `/v1/me/saved-jobs/:jobId` | Idempotent save |
+| `DELETE` | `/v1/me/saved-jobs/:jobId` | Idempotent unsave |
+| `GET` | `/v1/me/job-applications` | Self applications (cursor) |
+| `GET` | `/v1/me/job-applications/:applicationId` | Self detail; others → `404` |
+| `POST` | `/v1/me/job-listings` | Create **DRAFT** (author-only; not public) |
+| `GET` | `/v1/me/job-listings` | List own drafts |
+| `GET` | `/v1/me/job-listings/:jobId` | Own draft detail |
+| `PATCH` | `/v1/me/job-listings/:jobId` | Edit own draft |
+
+**Not LIVE:** employer verification, applicant counts, external ATS/email delivery, paid boosts, resume upload.
+
+---
+
+### Settings hub & account lifecycle (Task 015, Screen 26)
+
+| Method | Path | Auth | Status | Description |
+|---|---|---|---|---|
+| `GET` | `/v1/me/settings/overview` | Bearer | **LIVE** | Aggregated settings summary: profile header fields, account/phone read-only, honest `capabilities`, bounded counts, pointers to existing `/v1/me/*` routes |
+| `GET` | `/v1/me/account-deletion/impact` | Bearer | **LIVE** | Self-scoped dependency counts; `deletion.status` = `AWAITING_POLICY`; **no destructive delete** |
+| `GET` | `/v1/me/security/sessions` | Bearer | **LIVE** | Up to 50 active sessions (non-secret metadata; `isCurrent` when derivable) |
+| `DELETE` | `/v1/me/security/sessions/:sessionId` | Bearer | **LIVE** | Revoke own session (idempotent; cross-user → no-op) |
+| `POST` | `/v1/me/email-change/request` | Bearer | **DEV_ONLY** | Password reauth + pending challenge to **new** email; old email stays login until confirm; enumeration-safe `202`; **`403 FEATURE_DISABLED` when transactional email cannot hand off** (production `disabled` or missing provider) |
+| `POST` | `/v1/me/email-change/confirm` | Bearer | **DEV_ONLY** | Consume token; swap verified email; **revoke all sessions**; dev stub notifies prior email; **`403 FEATURE_DISABLED` when transactional email cannot hand off** |
+| `GET` | `/v1/me/saved-activities` | Bearer | **LIVE** | Cursor list of saved **Activity** entities (public cards only; omits blocked/unpublished/cancelled) |
+| `PUT` | `/v1/me/saved-activities/:activityId` | Bearer | **LIVE** | Idempotent save (published public activity; no RSVP side effect; no KYC for save) |
+| `DELETE` | `/v1/me/saved-activities/:activityId` | Bearer | **LIVE** | Idempotent unsave |
+
+**Reuse (unchanged):** `GET /v1/me/account`, `GET/PATCH /v1/me/profile`, `POST /v1/me/password-change`, `GET /v1/me/blocks`, `POST /v1/auth/logout`, `POST /v1/auth/logout-all`, activity/group/job routes referenced in overview `relatedRoutes`.
+
+**Gates:** Settings read uses `canAccessAccount` (pending + active). Saved activities, counts requiring full product access, and email-change **request** require verified email + age eligible (`hasFullAccountAccess`). Email-change **request** additionally requires password credential and verified email.
+
+**Not LIVE / honest DEFERRED in `capabilities`:** 2FA, subscription **billing/upgrade**, payment history, meetup invites hub, host ratings, 24/7 support, phone edit/verify, destructive account deletion. **`membershipPlanCatalog` is LIVE** (Task 017); overview also returns compact `membership` summary.
+
+---
+
+### Membership plans & entitlements (Task 017, Screen 18)
+
+| Method | Path | Auth | Status | Description |
+|---|---|---|---|---|
+| `GET` | `/v1/membership/plans` | Bearer | **LIVE** | Bounded plan catalog: `BASIC` **AVAILABLE** (USD **0** monthly); `CLUB` **NOT_CONFIGURED**, not purchasable; feature rows with honest `AVAILABLE` / `NOT_IMPLEMENTED` / `POLICY_PENDING`; **`billingConfigured: false`** |
+| `GET` | `/v1/me/membership` | Bearer | **LIVE** | Self membership: default **`BASIC`/`FREE`**, `billingStatus: NOT_CONFIGURED`, `canUpgrade: false`, `entitlements` mirror catalog semantics; **no** trial/subscription/payment fields populated |
+
+**Gates:** `canAccessAccount` (active or pending verification), self-only on `/v1/me/membership`.
+
+**Not LIVE:** subscribe/upgrade/cancel, Stripe/Apple Pay intents, webhooks, invoices, manual plan grants, Club pricing/trial, enforcement of Figma RSVP/radius/premium perks.
+
+**Settings integration:** `GET /v1/me/settings/overview` adds `membership` object and `relatedRoutes.membershipPlans` / `membership`; `capabilities.membershipPlanCatalog: LIVE`.
+
+**Source:** `src/modules/membership/*` (server-owned registry — **no DB migration** in Task 017)
+
+**OpenAPI:** `openapi/membership.yaml` · Parity: `docs/product/FIGMA_MEMBERSHIP_PARITY_TASK017.md`
+
+**Distinct from Task 008:** `GET/PUT /v1/me/favorite-activities` remains **preference pins** (plain text), not Activity entity bookmarks.
+
+**Source:** `src/modules/settings/*`, `src/modules/saved-activities/*`, `src/modules/auth/auth.service.ts` (email change challenges)
+
+---
+
+### Consent registry (`/v1/consents`)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v1/consents/required` | None | Server-owned registration + job-application consent availability (document IDs, active version IDs, `UNAVAILABLE`/`PLACEHOLDER` states — **no legal copy**) |
+
+**Source:** `src/modules/consent/*`
+
+---
+
+### Identity verification (Task 021)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/v1/me/verification/status` | Bearer | Self-service KYC summary + provider runtime status |
+| `POST` | `/v1/me/verification/sessions` | Bearer | Start provider session (requires `KYC_PROVIDER_ENABLED=true` and configured adapter) |
+| `GET` | `/v1/me/verification/sessions/:sessionId` | Bearer | Session owner read (no PII payloads) |
+| `POST` | `/v1/me/verification/sessions/:sessionId/cancel` | Bearer | Cancel active session |
+| `POST` | `/v1/webhooks/verification/:provider` | HMAC (`x-hmac-signature`, raw body) | Provider decision webhook (`mock` for integration; `veriff` **BLOCKED BY OWNER**) |
+
+**Runtime:** Default `KYC_PROVIDER_ENABLED=false` → `FEATURE_DISABLED`. **`KYC_PROVIDER=mock`** + secret enables integration-style sessions; **`veriff`** session creation and webhooks remain blocked until **KYC-02** owner approval and `VERIFF_LIVE_CALLS_ENABLED=true` (forbidden in production startup). **`User.identityVerificationStatus`** changes only via validated webhooks — never client-writable. Trusted KYC for activities also requires non-revoked, non-expired approval metadata (`identityVerificationValidUntil`, `identityVerificationRevokedAt`).
+
+**Source:** `src/modules/verification/*`, migration `20261027250000_kyc_verification_consent`
+
+---
+
 ## PLANNED (not implemented)
 
-**Product note (2026-10-27):** KYC **session** APIs remain unimplemented (no vendor). Activity **enforcement** for real-world publish/confirm is implemented in Task 010 and fails closed in production until a provider exists.
+**Product note (2026-10-27):** Veriff live sessions/webhooks **BLOCKED BY OWNER** (KYC-02). Activity **enforcement** for real-world publish/confirm uses trusted KYC and fails closed in production until `KYC_PROVIDER_ENABLED=true` with a configured adapter.
+
+**Store checkout / orders:** deferred until MKT-03 payment + fulfillment policies and processor selection.
 
 | Method | Path | Target task |
 |---|---|---|
 | `DELETE` | `/v1/me/account` | Later (deletion workflow UNRESOLVED) |
-| `POST` | `/v1/me/verification/sessions` | Later (KYC — **NOT IMPLEMENTED**; see `KYC_API_CANDIDATES.md`) |
-| `POST` | `/v1/me/verification/sessions` | KYC vendor TBD |
+| Veriff production activation | Owner + counsel | KYC-02 vendor selection; `VERIFF_*` secrets; legal ACTIVE consent IDs |
 
 ---
 
@@ -763,6 +973,11 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 | Date | Change |
 |---|---|
+| 2026-10-27 | Task 021 — canonical consent registry + validation; KYC verification sessions, mock webhook HMAC, trust metadata; Veriff blocked |
+| 2026-10-27 | Task 017 — membership plan catalog, self membership/entitlements, settings overview `membership` summary (D-08 billing deferred) |
+| 2026-10-27 | Task 015 — settings overview, saved activities, email change (DEV_ONLY), session inventory, deletion impact (non-destructive) |
+| 2026-10-27 | Task 014 — `/v1/store/*`, `/v1/me/store/*`, `/v1/jobs/*`, `/v1/me/saved-jobs`, job applications, job drafts |
+| 2026-10-27 | Task 013 — `/v1/home`, `/v1/me/community-feed`, in-app notifications inbox + event hooks |
 | 2026-10-27 | Task 011 — follow/unfollow, wave, message requests, 1:1 text conversations, unread/read watermarks |
 | 2026-10-27 | Task 010 — activities catalog, host draft/publish/cancel, discovery, RSVP/waitlist, meeting details, KYC enforcement |
 | 2026-10-27 | Task 009 — discovery list, public profile/avatar, user blocks (D-03/D-04 MVP) |

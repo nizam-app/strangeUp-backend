@@ -36,9 +36,17 @@ import type {
   GroupCursorListQuery,
   TransferOwnershipInput,
 } from "./group.validation.js";
+import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
 
 export class GroupMembershipService {
-  constructor(private readonly db: DatabaseClient) {}
+  private readonly notifications: NotificationEmitter;
+
+  constructor(
+    private readonly db: DatabaseClient,
+    notifications?: NotificationEmitter,
+  ) {
+    this.notifications = notifications ?? new NotificationEmitter(db);
+  }
 
   async join(viewer: User, groupId: string): Promise<GroupViewerMembershipDto> {
     assertGroupAccess(viewer);
@@ -338,6 +346,15 @@ export class GroupMembershipService {
           respondedAt: new Date(),
         },
       });
+      await this.notifications.emitInTransaction(tx, {
+        recipientId: target.userId,
+        type: "GROUP_MEMBERSHIP_APPROVED",
+        actorUserId: viewer.id,
+        sourceId: groupId,
+        title: "Group membership approved",
+        body: "You can now view posts and group chat.",
+        dedupeKey: `group-membership-approved:${groupId}:${target.userId}`,
+      });
       return { status: saved.status, role: saved.role };
     });
   }
@@ -370,6 +387,15 @@ export class GroupMembershipService {
           approverId: viewer.id,
           respondedAt: new Date(),
         },
+      });
+      await this.notifications.emitInTransaction(tx, {
+        recipientId: target.userId,
+        type: "GROUP_MEMBERSHIP_DECLINED",
+        actorUserId: viewer.id,
+        sourceId: groupId,
+        title: "Group membership declined",
+        body: "Your request to join this group was declined.",
+        dedupeKey: `group-membership-declined:${groupId}:${target.userId}`,
       });
     });
     return { declined: true };

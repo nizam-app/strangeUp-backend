@@ -4,11 +4,13 @@ import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { createAuthenticateMiddleware } from "../../common/middleware/authenticate.js";
 import { createAuthController, type AuthController } from "./auth.controller.js";
 import type { EmailSender } from "./email-sender.js";
+import type { Logger } from "pino";
 
 export function createAuthRouter(deps: {
   db: DatabaseClient;
   env: AppEnv;
   emailSender: EmailSender;
+  logger: Logger;
   controller?: AuthController;
 }): Router {
   const router = Router();

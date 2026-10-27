@@ -1,6 +1,6 @@
 # StrangeUp — Active Scope, Deferrals & Design Evidence Tracker
 
-**Updated:** 2026-10-27 (Task 012 groups coded; Tasks 006–012 integration gated)  
+**Updated:** 2026-10-27 (Task 021 KYC foundation + canonical consent)  
 **Target market:** United States | **Minimum age:** 18+ | **Primary currency:** USD  
 
 **Team boundary:** This repository is **backend only**. Flutter lives in a separate repo; publish contracts via `CURRENT_APIS.md` and `FLUTTER_DEVELOPER_HANDOFF.md` — do not implement mobile UI here.
@@ -26,19 +26,25 @@
 | Task 008 / 008A — favorites, visibility/location, avatar | **IMPLEMENTED** | Self-only APIs; owner policy **APPROVED** (`D-OWN-PROFILE-REMAINING-REQUEST-task008.md`); visibility default **VERIFIED_USERS_ONLY**; avatar byte validation; native section verify **pending** credentials |
 | `POST /v1/me/password-change` | **VERIFIED** | Task 005 slice 1 closed 2026-10-27; integration T005 **6/6** + full suite **30 passed**, 1 skipped |
 | Figma profile parity (safe fields) | **VERIFIED** | Unit + Neon `strangeup_test` integration |
-| KYC enforcement APIs | **PARTIAL** | Activity publish/confirm/meeting enforced (Task 010); no verification-session vendor API |
+| KYC enforcement APIs | **PARTIAL** | Activity publish/confirm/meeting enforced (Task 010); Task 021 sessions + mock webhook; **Veriff live BLOCKED BY OWNER** (KYC-02) |
 
 ## 3. Active next development scope (backend repo)
 
 | Order | Slice | Notes |
 |---|---|---|
-| **DONE** | **Integration verification gate** | Neon `strangeup_test`; unit **131**; integration **72 passed**, 1 skipped (Task 012) |
-| **VERIFIED (Neon)** | **Groups & Communities (Task 012)** | Screens 14/15/1/2 LIVE; stories/polls/photo posts deferred |
-| **IMPLEMENTED** | **Social connections (Task 011)** | Follow/wave/DM requests/1:1 chat LIVE in source; DB verify pending |
-| **IMPLEMENTED** | **Activities & meetups (Task 010)** | Screens 11–13 LIVE in source; DB verify pending |
-| **IMPLEMENTED** | **Discovery & public profiles (Task 009)** | D-03/D-04 MVP LIVE in source; DB verify pending |
-| **NEXT** | **Community Feed / Stories / Home**, or Marketplace/Jobs | Stories deferred from Task 012; do not invent 24h media |
-| **NEXT** | **Settings hub (Screen 26)** | Account deletion, email change — legal/policy slices |
+| **DONE** | **Integration verification gate** | Neon `strangeup_test`; regression includes Tasks 006–015 after closure run |
+| **IMPLEMENTED** | **Store catalog, cart, favorites & jobs (Task 014)** | Screens 20–23; checkout/payment/employer delivery **DEFERRED** (MKT-03, JOB-02) |
+| **VERIFIED (Neon)** | **Home dashboard, feed & notifications (Task 013)** | Screen 08 + Notification.pdf; stories still deferred |
+| **VERIFIED (Neon)** | **Groups & Communities (Task 012)** | Screens 14/15/1/2 LIVE |
+| **IMPLEMENTED (disabled)** | **Group stories, photo posts & polls (Task 016)** | Routes + schema behind `GROUP_COMMUNITY_INTERACTIVE_ENABLED=false`; Home stories **DEFERRED**; D-06 owner gate |
+| **VERIFIED (Neon)** | **Social / Activities / Discovery (Tasks 009–011)** | Included in regression suite |
+| **VERIFIED (Neon)** | **Settings hub & account lifecycle (Task 015)** | Screen 26 overview, saved activities, sessions, email change DEV_ONLY; deletion impact only — **destructive delete DEFERRED** (SET-03) |
+| **IMPLEMENTED** | **Membership plans & entitlements (Task 017)** | Screen 18 catalog + self status; **no DB migration**; D-08 billing/Club enrollment **NOT_CONFIGURED**; settings overview `membership` summary |
+| **IMPLEMENTED** | **Release hardening phase 1 (Task 018)** | Production env fail-closed; format drift diagnosis; LF `.gitattributes` — **not** production-ready alone |
+| **IMPLEMENTED** | **Auth email & distributed abuse protection (Tasks 019 / 019B)** | Resend + Upstash Redis adapters; default remains dev_stub/memory; **live production activation** requires deploy secrets + explicit deploy authorization |
+| **IMPLEMENTED** | **Production media storage (Task 020)** | S3-compatible private adapter; default local disk; API contracts unchanged (multipart fields + authenticated GET bytes); **live bucket activation** owner-gated — see `docs/operations/MEDIA_OBJECT_STORAGE.md` |
+| **VERIFIED (Neon)** | **KYC + canonical consent (Task 021)** | Registry + registration/job validation; verification sessions; HMAC webhooks (`mock` only in CI); counsel **ACTIVE** consent IDs still **DEFERRED**; Veriff **DEFERRED** until KYC-02 |
+| **NEXT** | **D-08 commercial approval + billing provider** **or** **D-06 owner activation** for Task 016 **or** checkout after MKT-03 | No fake prices/trials; enable interactive media only after D-06 sign-off |
 | **CANCELLED** | Task 004 Flutter Edit Personal Details | Client work — separate Flutter repository (not this milestone) |
 | **NEXT** | Signup/register contract vs Figma Screen 06 | Backend requires DOB + consents (D-02); reconcile API docs if product changes register shape — **no Flutter work in this repo** |
 | **LIVE (MVP)** | Public profile / people discovery | Task 009 — authenticated reads only; favorites still private; geo/social **deferred** |
@@ -76,6 +82,12 @@ Maintain trace: `PDF filename | control | API | verified vs deferred`. Ask owner
 ### Native PostgreSQL cutover — 2026-10-27 (superseded as default)
 
 - **Topology:** `strangeup_dev` (dev) + `strangeup_test` (integration only) on `localhost:5432` — now an optional fallback.
+
+### Task 013 — home, feed & notifications — 2026-10-27
+
+- **Implemented:** `GET /v1/home`, `GET /v1/me/community-feed`, notification inbox + transactional hooks.
+- **Deferred:** stories, push, scheduled reminders, KYC-success cards, photo/poll feed bodies.
+- **Tests:** unit **132**; integration **76 passed**, 1 skipped on Neon `strangeup_test`.
 
 ### Task 012 — groups & communities — 2026-10-27
 

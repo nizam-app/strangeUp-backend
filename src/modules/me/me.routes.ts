@@ -7,12 +7,20 @@ import { createFavoriteActivitiesController } from "../favorite-activities/favor
 import { createInterestsController } from "../interests/interests.controller.js";
 import { createAvatarController } from "../profile-media/avatar.controller.js";
 import { avatarUploadMiddleware } from "../profile-media/avatar-upload.middleware.js";
-import { LocalAvatarStorage } from "../profile-media/local-avatar-storage.js";
+import { createAppMediaStorages } from "../../infrastructure/media-storage/create-media-storages.js";
 import { createBlocksController } from "../blocks/blocks.controller.js";
 import { createMeActivitiesRouter } from "../activities/activities.routes.js";
 import { createMeSocialRouter } from "../social/social.routes.js";
 import { createMeGroupsRouter } from "../groups/groups.routes.js";
+import { createMeHomeRouter } from "../home/home.routes.js";
+import { createMeStoreRouter } from "../store/store.routes.js";
+import { createMeJobsRouter } from "../jobs/job.routes.js";
+import { createNotificationController } from "../notifications/notification.controller.js";
 import { createMeController } from "./me.controller.js";
+import { createSavedActivitiesController } from "../saved-activities/saved-activity.controller.js";
+import { createSettingsController } from "../settings/settings.controller.js";
+import { createMeMembershipRouter } from "../membership/membership.routes.js";
+import { createVerificationRouter } from "../verification/verification.routes.js";
 
 export function createMeRouter(deps: {
   db: DatabaseClient;
@@ -23,10 +31,15 @@ export function createMeRouter(deps: {
   const controller = createMeController(deps);
   const interestsController = createInterestsController(deps);
   const favoriteActivitiesController = createFavoriteActivitiesController(deps);
-  const avatarStorage = new LocalAvatarStorage(deps.env.PROFILE_UPLOAD_DIR);
-  const avatarController = createAvatarController({ db: deps.db, storage: avatarStorage });
+  const mediaStorages = createAppMediaStorages(deps.env);
+  const avatarController = createAvatarController({ db: deps.db, storage: mediaStorages.avatar });
   const blocksController = createBlocksController({ db: deps.db });
+  const notificationController = createNotificationController({ db: deps.db });
+  const savedActivitiesController = createSavedActivitiesController(deps);
+  const settingsController = createSettingsController(deps);
   const authenticate = createAuthenticateMiddleware(deps.authService);
+
+  router.use("/verification", createVerificationRouter(deps));
 
   router.get("/account", authenticate, (req, res, next) => {
     void controller.getAccount(req, res).catch(next);
@@ -39,6 +52,36 @@ export function createMeRouter(deps: {
   });
   router.post("/password-change", authenticate, (req, res, next) => {
     void controller.changePassword(req, res).catch(next);
+  });
+
+  router.get("/settings/overview", authenticate, (req, res, next) => {
+    void settingsController.getOverview(req, res).catch(next);
+  });
+  router.use(createMeMembershipRouter(deps));
+  router.get("/account-deletion/impact", authenticate, (req, res, next) => {
+    void settingsController.getAccountDeletionImpact(req, res).catch(next);
+  });
+  router.get("/security/sessions", authenticate, (req, res, next) => {
+    void settingsController.listSessions(req, res).catch(next);
+  });
+  router.delete("/security/sessions/:sessionId", authenticate, (req, res, next) => {
+    void settingsController.revokeSession(req, res).catch(next);
+  });
+  router.post("/email-change/request", authenticate, (req, res, next) => {
+    void settingsController.requestEmailChange(req, res).catch(next);
+  });
+  router.post("/email-change/confirm", authenticate, (req, res, next) => {
+    void settingsController.confirmEmailChange(req, res).catch(next);
+  });
+
+  router.get("/saved-activities", authenticate, (req, res, next) => {
+    void savedActivitiesController.listSaved(req, res).catch(next);
+  });
+  router.put("/saved-activities/:activityId", authenticate, (req, res, next) => {
+    void savedActivitiesController.saveActivity(req, res).catch(next);
+  });
+  router.delete("/saved-activities/:activityId", authenticate, (req, res, next) => {
+    void savedActivitiesController.unsaveActivity(req, res).catch(next);
   });
   router.get("/interests", authenticate, (req, res, next) => {
     void interestsController.getMyInterests(req, res).catch(next);
@@ -72,9 +115,22 @@ export function createMeRouter(deps: {
     void blocksController.listBlocks(req, res).catch(next);
   });
 
+  router.get("/notifications", authenticate, (req, res, next) => {
+    void notificationController.list(req, res).catch(next);
+  });
+  router.post("/notifications/read-all", authenticate, (req, res, next) => {
+    void notificationController.markAllRead(req, res).catch(next);
+  });
+  router.post("/notifications/:notificationId/read", authenticate, (req, res, next) => {
+    void notificationController.markRead(req, res).catch(next);
+  });
+
   router.use(createMeActivitiesRouter(deps));
   router.use(createMeSocialRouter(deps));
   router.use(createMeGroupsRouter(deps));
+  router.use(createMeHomeRouter(deps));
+  router.use(createMeStoreRouter(deps));
+  router.use(createMeJobsRouter(deps));
 
   return router;
 }

@@ -3,16 +3,30 @@ import pino from "pino";
 import { createApp } from "./app.js";
 import { loadEnv } from "./config/env.js";
 import { disconnectPrisma, getPrismaClient } from "./infrastructure/database/prisma.js";
+import {
+  configureRateLimitStore,
+  disconnectRateLimitStore,
+  resolveRateLimitStore,
+} from "./modules/auth/rate-limit.js";
 
-function main(): void {
+async function main(): Promise<void> {
   const env = loadEnv();
   const logger = pino({
     level: env.LOG_LEVEL,
     redact: {
-      paths: ["DATABASE_URL", "req.headers.authorization", "password", "secret"],
+      paths: [
+        "DATABASE_URL",
+        "RATE_LIMIT_REDIS_URL",
+        "RESEND_API_KEY",
+        "req.headers.authorization",
+        "password",
+        "secret",
+      ],
       censor: "[REDACTED]",
     },
   });
+
+  configureRateLimitStore(await resolveRateLimitStore(env, logger));
 
   const db = env.DATABASE_URL ? getPrismaClient(env.DATABASE_URL) : null;
   const app = createApp({ env, logger, db });
@@ -24,10 +38,12 @@ function main(): void {
   const shutdown = (signal: string) => {
     logger.info({ signal }, "shutdown requested");
     server.close(() => {
-      void disconnectPrisma().then(() => {
-        logger.info("server stopped");
-        process.exit(0);
-      });
+      void disconnectRateLimitStore()
+        .then(() => disconnectPrisma())
+        .then(() => {
+          logger.info("server stopped");
+          process.exit(0);
+        });
     });
 
     setTimeout(() => {
@@ -45,7 +61,7 @@ function main(): void {
 }
 
 try {
-  main();
+  await main();
 } catch (err: unknown) {
   console.error(err);
   process.exit(1);

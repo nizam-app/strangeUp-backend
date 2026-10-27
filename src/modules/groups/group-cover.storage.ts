@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../../common/errors/app-error.js";
@@ -9,6 +9,17 @@ export type StoredGroupCover = {
   absolutePath: string;
 };
 
+export type GroupCoverStorage = {
+  save(
+    groupId: string,
+    buffer: Buffer,
+    contentType: AvatarStoredContentType,
+  ): Promise<Pick<StoredGroupCover, "storageKey">>;
+  readBytes(storageKey: string, groupId: string): Promise<Buffer>;
+  assertStorageKeyOwnedByGroup(storageKey: string, groupId: string): void;
+  deleteByStorageKey(storageKey: string, groupId: string): Promise<void>;
+};
+
 const EXT_BY_CONTENT_TYPE: Record<AvatarStoredContentType, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -17,7 +28,7 @@ const EXT_BY_CONTENT_TYPE: Record<AvatarStoredContentType, string> = {
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 
-export class LocalGroupCoverStorage {
+export class LocalGroupCoverStorage implements GroupCoverStorage {
   constructor(private readonly rootDir: string) {}
 
   private resolvedRoot(): string {
@@ -78,6 +89,16 @@ export class LocalGroupCoverStorage {
     const segments = normalized.split(/[/\\]/).filter(Boolean);
     if (segments[0] !== groupId) {
       throw new AppError("INTERNAL_ERROR", "Group cover storage key mismatch", 500);
+    }
+  }
+
+  async readBytes(storageKey: string, groupId: string): Promise<Buffer> {
+    this.assertStorageKeyOwnedByGroup(storageKey, groupId);
+    const absolutePath = this.resolveAbsolutePath(storageKey);
+    try {
+      return await readFile(absolutePath);
+    } catch {
+      throw new AppError("NOT_FOUND", "Cover not found", 404);
     }
   }
 

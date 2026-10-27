@@ -2,10 +2,10 @@ import type { Response } from "express";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import type { LocalAvatarStorage } from "./local-avatar-storage.js";
+import type { AvatarStorage } from "./local-avatar-storage.js";
 import { AvatarService } from "./avatar.service.js";
 
-export function createAvatarController(deps: { db: DatabaseClient; storage: LocalAvatarStorage }) {
+export function createAvatarController(deps: { db: DatabaseClient; storage: AvatarStorage }) {
   const service = new AvatarService(deps.db, deps.storage);
 
   return {

@@ -3,7 +3,7 @@ import type { AppEnv } from "../../config/env.js";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import { checkRateLimit } from "../auth/rate-limit.js";
+import { checkRateLimit, throwIfRateLimited } from "../auth/rate-limit.js";
 import { ConversationService } from "./conversation.service.js";
 import { FollowService } from "./follow.service.js";
 import { MessageRequestService } from "./message-request.service.js";
@@ -28,11 +28,8 @@ function requireUser(req: AuthenticatedRequest) {
   return req.authUser;
 }
 
-function enforceLimit(key: string, limit: number): void {
-  const result = checkRateLimit(key, limit, 60_000);
-  if (!result.allowed) {
-    throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-  }
+async function enforceLimit(key: string, limit: number): Promise<void> {
+  throwIfRateLimited(await checkRateLimit(key, limit, 60_000));
 }
 
 export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv }) {
@@ -49,7 +46,7 @@ export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv 
     follow: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
       const { userId } = socialUserIdParamSchema.parse(req.params);
-      enforceLimit(`social:follow:${user.id}`, followLimit);
+      await enforceLimit(`social:follow:${user.id}`, followLimit);
       const data = await followService.follow(user, userId);
       res.status(200).json({ data, meta: { requestId: req.requestId } });
     },
@@ -82,7 +79,7 @@ export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv 
     wave: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
       const { userId } = socialUserIdParamSchema.parse(req.params);
-      enforceLimit(`social:wave:${user.id}`, waveLimit);
+      await enforceLimit(`social:wave:${user.id}`, waveLimit);
       const data = await waveService.sendWave(user, userId);
       res.status(200).json({ data, meta: { requestId: req.requestId } });
     },
@@ -99,7 +96,7 @@ export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv 
     createMessageRequest: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
       const body = createMessageRequestBodySchema.parse(req.body);
-      enforceLimit(`social:request:${user.id}`, requestLimit);
+      await enforceLimit(`social:request:${user.id}`, requestLimit);
       const result = await requestService.create(user, body.targetUserId);
       res.status(result.created ? 201 : 200).json({
         data: result.dto,
@@ -155,7 +152,7 @@ export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv 
       const user = requireUser(req);
       const { conversationId } = socialConversationIdParamSchema.parse(req.params);
       const body = sendDirectMessageBodySchema.parse(req.body);
-      enforceLimit(`social:message:${user.id}`, messageLimit);
+      await enforceLimit(`social:message:${user.id}`, messageLimit);
       const data = await conversationService.sendMessage(user, conversationId, body);
       res.status(201).json({ data, meta: { requestId: req.requestId } });
     },

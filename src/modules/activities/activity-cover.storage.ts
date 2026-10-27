@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../../common/errors/app-error.js";
@@ -9,13 +9,25 @@ export type StoredActivityCover = {
   absolutePath: string;
 };
 
+export type ActivityCoverStorage = {
+  save(
+    hostId: string,
+    activityId: string,
+    buffer: Buffer,
+    contentType: AvatarStoredContentType,
+  ): Promise<Pick<StoredActivityCover, "storageKey">>;
+  readBytes(storageKey: string, hostId: string): Promise<Buffer>;
+  assertStorageKeyOwnedByHost(storageKey: string, hostId: string): void;
+  deleteByStorageKey(storageKey: string, hostId: string): Promise<void>;
+};
+
 const EXT_BY_CONTENT_TYPE: Record<AvatarStoredContentType, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
 };
 
-export class LocalActivityCoverStorage {
+export class LocalActivityCoverStorage implements ActivityCoverStorage {
   constructor(private readonly rootDir: string) {}
 
   private resolvedRoot(): string {
@@ -78,6 +90,16 @@ export class LocalActivityCoverStorage {
     const segments = normalized.split(/[/\\]/).filter(Boolean);
     if (segments[0] !== hostId) {
       throw new AppError("INTERNAL_ERROR", "Activity cover storage key mismatch", 500);
+    }
+  }
+
+  async readBytes(storageKey: string, hostId: string): Promise<Buffer> {
+    this.assertStorageKeyOwnedByHost(storageKey, hostId);
+    const absolutePath = this.resolveAbsolutePath(storageKey);
+    try {
+      return await readFile(absolutePath);
+    } catch {
+      throw new AppError("NOT_FOUND", "Cover not found", 404);
     }
   }
 

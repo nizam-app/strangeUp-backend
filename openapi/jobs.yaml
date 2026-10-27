@@ -1,0 +1,102 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Jobs API
+  version: 0.1.0-task014
+paths:
+  /v1/jobs:
+    get:
+      summary: Published open job listings (no distance/partner badges)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: employmentType
+          schema:
+            type: string
+            enum: [FULL_TIME, PART_TIME, CONTRACT, PER_SESSION]
+        - in: query
+          name: workMode
+          schema:
+            type: string
+            enum: [ONSITE, REMOTE, HYBRID]
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: region
+          schema: { type: string }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: Job summaries with self-reported pay disclaimer
+  /v1/jobs/{jobId}:
+    get:
+      summary: Published job detail
+      security:
+        - bearerAuth: []
+  /v1/jobs/{jobId}/applications:
+    post:
+      summary: In-platform application (employer delivery NOT_CONFIGURED)
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Application stored for applicant tracking only
+        "409":
+          description: Duplicate application per user/job
+  /v1/me/saved-jobs:
+    get:
+      summary: Saved published jobs
+      security:
+        - bearerAuth: []
+  /v1/me/saved-jobs/{jobId}:
+    put:
+      summary: Idempotent save
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Idempotent unsave
+      security:
+        - bearerAuth: []
+  /v1/me/job-applications:
+    get:
+      summary: Applicant-only application list
+      security:
+        - bearerAuth: []
+  /v1/me/job-applications/{applicationId}:
+    get:
+      summary: Applicant-only application detail
+      security:
+        - bearerAuth: []
+  /v1/me/job-listings:
+    post:
+      summary: Create author DRAFT (not published)
+      security:
+        - bearerAuth: []
+    get:
+      summary: List own drafts
+      security:
+        - bearerAuth: []
+  /v1/me/job-listings/{jobId}:
+    get:
+      summary: Own draft detail
+      security:
+        - bearerAuth: []
+    patch:
+      summary: Edit own draft
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

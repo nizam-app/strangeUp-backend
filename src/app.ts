@@ -1,5 +1,7 @@
 import cors from "cors";
 import express from "express";
+import { createVerificationWebhookController } from "./modules/verification/verification-webhook.controller.js";
+import { createConsentRouter } from "./modules/consent/consent.routes.js";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import type { Logger } from "pino";
@@ -8,7 +10,7 @@ import { createErrorHandler, notFoundHandler } from "./common/middleware/error-h
 import { requestIdMiddleware } from "./common/middleware/request-id.js";
 import { redactSensitive } from "./common/utils/redact.js";
 import type { DatabaseClient } from "./infrastructure/database/prisma.js";
-import { createDevEmailSender } from "./modules/auth/email-sender.js";
+import { resolveEmailSender } from "./modules/auth/email-sender.js";
 import { createAuthController } from "./modules/auth/auth.controller.js";
 import { createAuthRouter } from "./modules/auth/auth.routes.js";
 import { createInterestsRouter } from "./modules/interests/interests.routes.js";
@@ -21,6 +23,10 @@ import {
   createActivityCategoriesRouter,
 } from "./modules/activities/activities.routes.js";
 import { createGroupCategoriesRouter, createGroupsRouter } from "./modules/groups/groups.routes.js";
+import { createHomeRouter } from "./modules/home/home.routes.js";
+import { createStoreRouter } from "./modules/store/store.routes.js";
+import { createJobsRouter } from "./modules/jobs/job.routes.js";
+import { createMembershipRouter } from "./modules/membership/membership.routes.js";
 import { createHealthRouter } from "./routes/health.js";
 import type { EmailSender } from "./modules/auth/email-sender.js";
 
@@ -34,7 +40,16 @@ export type CreateAppDeps = {
 export function createApp(deps: CreateAppDeps): express.Application {
   const app = express();
   const { env, logger, db } = deps;
-  const emailSender = deps.emailSender ?? createDevEmailSender(logger);
+  const emailSender =
+    deps.emailSender ??
+    resolveEmailSender({
+      mode: env.transactionalEmail.mode,
+      logger,
+      fromAddress: env.transactionalEmail.fromAddress,
+      resendApiKey: env.RESEND_API_KEY,
+      requestTimeoutMs: env.RESEND_REQUEST_TIMEOUT_MS,
+      maxRetries: env.RESEND_MAX_RETRIES,
+    });
 
   if (env.TRUST_PROXY) {
     app.set("trust proxy", 1);
@@ -66,13 +81,29 @@ export function createApp(deps: CreateAppDeps): express.Application {
     }),
   );
 
+  app.use("/v1/consents", createConsentRouter({ env }));
+
+  if (db) {
+    const verificationWebhookController = createVerificationWebhookController({ db, env });
+    app.use(
+      "/v1/webhooks/verification/:provider",
+      express.raw({ type: "application/json", limit: env.KYC_WEBHOOK_BODY_LIMIT_BYTES }),
+      (req, res, next) => {
+        void verificationWebhookController.handleVerificationWebhook(req, res).catch(next);
+      },
+    );
+  }
+
   app.use(express.json({ limit: env.JSON_BODY_LIMIT }));
 
   app.use("/health", createHealthRouter({ db }));
 
   if (db) {
-    const authController = createAuthController({ db, env, emailSender });
-    app.use("/v1/auth", createAuthRouter({ db, env, emailSender, controller: authController }));
+    const authController = createAuthController({ db, env, emailSender, logger });
+    app.use(
+      "/v1/auth",
+      createAuthRouter({ db, env, emailSender, logger, controller: authController }),
+    );
     app.use(
       "/v1/interests",
       createInterestsRouter({ db, authService: authController.authService }),
@@ -86,6 +117,10 @@ export function createApp(deps: CreateAppDeps): express.Application {
     app.use("/v1/activities", createActivitiesRouter({ db, authService, env }));
     app.use("/v1/group-categories", createGroupCategoriesRouter({ db, authService, env }));
     app.use("/v1/groups", createGroupsRouter({ db, authService, env }));
+    app.use("/v1/home", createHomeRouter({ db, authService, env }));
+    app.use("/v1/store", createStoreRouter({ db, authService, env }));
+    app.use("/v1/jobs", createJobsRouter({ db, authService, env }));
+    app.use("/v1/membership", createMembershipRouter({ db, authService, env }));
   }
 
   app.use(notFoundHandler);

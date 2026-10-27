@@ -1,4 +1,4 @@
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { AppError } from "../../common/errors/app-error.js";
@@ -9,13 +9,25 @@ export type StoredAvatar = {
   absolutePath: string;
 };
 
+export type AvatarStorage = {
+  save(
+    userId: string,
+    buffer: Buffer,
+    contentType: AvatarStoredContentType,
+  ): Promise<Pick<StoredAvatar, "storageKey">>;
+  readBytes(storageKey: string, userId: string): Promise<Buffer>;
+  assertStorageKeyOwnedByUser(storageKey: string, userId: string): void;
+  deleteByStorageKey(storageKey: string, userId: string): Promise<void>;
+  deleteUserAvatar(userId: string): Promise<void>;
+};
+
 const EXT_BY_CONTENT_TYPE: Record<AvatarStoredContentType, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
 };
 
-export class LocalAvatarStorage {
+export class LocalAvatarStorage implements AvatarStorage {
   constructor(private readonly rootDir: string) {}
 
   private resolvedRoot(): string {
@@ -81,6 +93,16 @@ export class LocalAvatarStorage {
     const segments = normalized.split(/[/\\]/).filter(Boolean);
     if (segments[0] !== userId) {
       throw new AppError("INTERNAL_ERROR", "Avatar storage key mismatch", 500);
+    }
+  }
+
+  async readBytes(storageKey: string, userId: string): Promise<Buffer> {
+    this.assertStorageKeyOwnedByUser(storageKey, userId);
+    const absolutePath = this.resolveAbsolutePath(storageKey);
+    try {
+      return await readFile(absolutePath);
+    } catch {
+      throw new AppError("NOT_FOUND", "Avatar not found", 404);
     }
   }
 

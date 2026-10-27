@@ -1,11 +1,10 @@
-import { readFile } from "node:fs/promises";
 import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { canAccessAccount, canEditProfile, toPolicyActor } from "../policy/account-policy.js";
 import { AVATAR_MAX_BYTES } from "./avatar.constants.js";
 import { processAvatarUpload } from "./avatar-image-processor.js";
-import { LocalAvatarStorage } from "./local-avatar-storage.js";
+import type { AvatarStorage } from "./local-avatar-storage.js";
 
 export type AvatarMetaDto = {
   hasAvatar: boolean;
@@ -16,7 +15,7 @@ export type AvatarMetaDto = {
 export class AvatarService {
   constructor(
     private readonly db: DatabaseClient,
-    private readonly storage: LocalAvatarStorage,
+    private readonly storage: AvatarStorage,
   ) {}
 
   async getAvatarMeta(user: User): Promise<AvatarMetaDto> {
@@ -54,9 +53,7 @@ export class AvatarService {
       throw new AppError("NOT_FOUND", "Avatar not found", 404);
     }
 
-    this.storage.assertStorageKeyOwnedByUser(profile.avatarStorageKey, user.id);
-    const absolutePath = this.storage.resolveAbsolutePath(profile.avatarStorageKey);
-    const buffer = await readFile(absolutePath);
+    const buffer = await this.storage.readBytes(profile.avatarStorageKey, user.id);
     return { buffer, contentType: profile.avatarContentType };
   }
 

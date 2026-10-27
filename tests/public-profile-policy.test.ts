@@ -15,9 +15,16 @@ const eligible = {
   suspendedAt: null,
   deletedAt: null,
   identityVerificationStatus: "NOT_STARTED" as const,
+  identityVerificationApprovedAt: null,
+  identityVerificationValidUntil: null,
+  identityVerificationRevokedAt: null,
 };
 
-const kycApproved = { ...eligible, identityVerificationStatus: "APPROVED" as const };
+const kycApproved = {
+  ...eligible,
+  identityVerificationStatus: "APPROVED" as const,
+  identityVerificationApprovedAt: new Date(),
+};
 
 describe("public profile policy (D-03/D-04)", () => {
   it("requires full account access to browse", () => {

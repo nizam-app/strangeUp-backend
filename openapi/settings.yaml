@@ -1,0 +1,127 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Settings & Account Lifecycle API (Task 015)
+  version: 0.1.0
+  description: |
+    Screen 26 settings hub backend slice. Email change is DEV_ONLY (stub transport).
+    Account deletion impact is read-only; no destructive DELETE /v1/me/account.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/me/settings/overview:
+    get:
+      summary: Settings hub aggregate (LIVE)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Overview with capabilities and counts
+        "403":
+          description: Account unavailable
+  /v1/me/account-deletion/impact:
+    get:
+      summary: Deletion dependency counts (LIVE, non-destructive)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: AWAITING_POLICY — no delete endpoint
+  /v1/me/security/sessions:
+    get:
+      summary: Active session inventory (LIVE)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Non-secret session metadata
+  /v1/me/security/sessions/{sessionId}:
+    delete:
+      summary: Revoke one session (LIVE)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Revoked or idempotent no-op
+  /v1/me/email-change/request:
+    post:
+      summary: Start email change (DEV_ONLY delivery)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newEmail, currentPassword]
+              properties:
+                newEmail: { type: string, format: email }
+                currentPassword: { type: string }
+      responses:
+        "202":
+          description: Pending challenge issued (enumeration-safe)
+        "401":
+          description: Invalid current password
+  /v1/me/email-change/confirm:
+    post:
+      summary: Confirm email change (DEV_ONLY)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: Email updated; all sessions revoked
+        "400":
+          description: Invalid or expired token
+  /v1/me/saved-activities:
+    get:
+      summary: List saved Activity entities (LIVE)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: Public activity cards only
+  /v1/me/saved-activities/{activityId}:
+    put:
+      summary: Save activity (LIVE)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: activityId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Idempotent save
+        "404":
+          description: Activity not saveable
+    delete:
+      summary: Unsave activity (LIVE)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: activityId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Idempotent unsave
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -3,13 +3,13 @@ import type {
   ActivityMode,
   ActivityParticipationState,
   ActivityStatus,
-  IdentityVerificationStatus,
 } from "../../../generated/prisma/client.js";
 import type { PolicyActor } from "../policy/account-policy.js";
 import { hasFullAccountAccess } from "../policy/account-policy.js";
 import {
   hasCurrentTrustedKycForEnforcement,
   type ActivityKycEnforcementContext,
+  type KycTrustSnapshot,
 } from "./activity-kyc.js";
 
 export function isRealWorldActivityMode(mode: ActivityMode): boolean {
@@ -57,10 +57,10 @@ export function canDecreaseCapacity(nextCapacity: number, confirmedCount: number
 }
 
 export function hasTrustedKycForActivityAction(
-  identityVerificationStatus: IdentityVerificationStatus,
+  kycTrust: KycTrustSnapshot,
   ctx: ActivityKycEnforcementContext,
 ): boolean {
-  return hasCurrentTrustedKycForEnforcement(identityVerificationStatus, ctx);
+  return hasCurrentTrustedKycForEnforcement(kycTrust, ctx);
 }
 
 export type WaitlistPromotionDecision =
@@ -77,7 +77,7 @@ export function decideWaitlistPromotion(input: {
   nextQueued: {
     accountEligible: boolean;
     blockedWithHost: boolean;
-    identityVerificationStatus: IdentityVerificationStatus;
+    kycTrust: KycTrustSnapshot;
   } | null;
   mode: ActivityMode;
   kyc: ActivityKycEnforcementContext;
@@ -93,7 +93,7 @@ export function decideWaitlistPromotion(input: {
   }
   if (
     requiresKycForConfirmedJoin(input.mode) &&
-    !hasTrustedKycForActivityAction(input.nextQueued.identityVerificationStatus, input.kyc)
+    !hasTrustedKycForActivityAction(input.nextQueued.kycTrust, input.kyc)
   ) {
     return { action: "hold_queue", reason: "kyc" };
   }
@@ -105,7 +105,7 @@ export function canAccessMeetingDetails(input: {
   participationState: ActivityParticipationState | null;
   activityStatus: ActivityStatus;
   mode: ActivityMode;
-  identityVerificationStatus: IdentityVerificationStatus;
+  kycTrust: KycTrustSnapshot;
   accountEligible: boolean;
   blockedWithHost: boolean;
   kyc: ActivityKycEnforcementContext;
@@ -127,7 +127,7 @@ export function canAccessMeetingDetails(input: {
   }
   if (
     requiresKycForConfirmedJoin(input.mode) &&
-    !hasTrustedKycForActivityAction(input.identityVerificationStatus, input.kyc)
+    !hasTrustedKycForActivityAction(input.kycTrust, input.kyc)
   ) {
     return false;
   }
@@ -143,7 +143,7 @@ export function resolveJoinPath(input: {
   waitlistEnabled: boolean;
   existingState: ActivityParticipationState | null;
   mode: ActivityMode;
-  identityVerificationStatus: IdentityVerificationStatus;
+  kycTrust: KycTrustSnapshot;
   kyc: ActivityKycEnforcementContext;
 }): "already_joined" | "confirm" | "waitlist" | "kyc_required" | "full" | "closed" | "host" {
   if (input.isHost) {
@@ -158,7 +158,7 @@ export function resolveJoinPath(input: {
   if (input.confirmedCount < input.capacity) {
     if (
       requiresKycForConfirmedJoin(input.mode) &&
-      !hasTrustedKycForActivityAction(input.identityVerificationStatus, input.kyc)
+      !hasTrustedKycForActivityAction(input.kycTrust, input.kyc)
     ) {
       return "kyc_required";
     }

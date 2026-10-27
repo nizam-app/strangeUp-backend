@@ -9,6 +9,9 @@ const viewer = {
   suspendedAt: null,
   deletedAt: null,
   identityVerificationStatus: "NOT_STARTED" as const,
+  identityVerificationApprovedAt: null,
+  identityVerificationValidUntil: null,
+  identityVerificationRevokedAt: null,
 };
 
 describe("buildDiscoverableUsersWhere", () => {

@@ -112,4 +112,5 @@ Documented in `docs/api/FOUNDATION_ENVELOPE.md`. Versioned product routes under 
 ## CI
 
 GitHub Actions workflow: `.github/workflows/ci.yml` (lint, typecheck, unit tests, build).
+
 # strangeUp-backend

@@ -4,6 +4,7 @@ import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { createAuthenticateMiddleware } from "../../common/middleware/authenticate.js";
 import type { AuthService } from "../auth/auth.service.js";
 import { groupCoverUploadMiddleware } from "./group-cover-upload.middleware.js";
+import { groupContentImageUploadMiddleware } from "../group-content/group-content-upload.middleware.js";
 import { createGroupsControllers } from "./groups.controller.js";
 
 export function createGroupsRouter(deps: {
@@ -74,6 +75,52 @@ export function createGroupsRouter(deps: {
   });
   router.get("/:groupId/activities", authenticate, (req, res, next) => {
     void controller.listActivities(req, res).catch(next);
+  });
+  router.post(
+    "/:groupId/posts/:postId/media",
+    authenticate,
+    groupContentImageUploadMiddleware,
+    (req, res, next) => {
+      void controller.attachPostMedia(req, res).catch(next);
+    },
+  );
+  router.get("/:groupId/posts/:postId/media/:mediaId", authenticate, (req, res, next) => {
+    void controller.getPostMedia(req, res).catch(next);
+  });
+  router.delete("/:groupId/posts/:postId/media/:mediaId", authenticate, (req, res, next) => {
+    void controller.removePostMedia(req, res).catch(next);
+  });
+  router.get("/:groupId/stories", authenticate, (req, res, next) => {
+    void controller.listStories(req, res).catch(next);
+  });
+  router.post(
+    "/:groupId/stories",
+    authenticate,
+    groupContentImageUploadMiddleware,
+    (req, res, next) => {
+      void controller.createStory(req, res).catch(next);
+    },
+  );
+  router.get("/:groupId/stories/:storyId/media", authenticate, (req, res, next) => {
+    void controller.getStoryMedia(req, res).catch(next);
+  });
+  router.delete("/:groupId/stories/:storyId", authenticate, (req, res, next) => {
+    void controller.removeStory(req, res).catch(next);
+  });
+  router.post("/:groupId/posts/:postId/poll", authenticate, (req, res, next) => {
+    void controller.createPoll(req, res).catch(next);
+  });
+  router.get("/:groupId/posts/:postId/poll", authenticate, (req, res, next) => {
+    void controller.getPoll(req, res).catch(next);
+  });
+  router.put("/:groupId/posts/:postId/poll/vote", authenticate, (req, res, next) => {
+    void controller.votePoll(req, res).catch(next);
+  });
+  router.post("/:groupId/content-reports", authenticate, (req, res, next) => {
+    void controller.createContentReport(req, res).catch(next);
+  });
+  router.get("/:groupId/content-reports", authenticate, (req, res, next) => {
+    void controller.listContentReports(req, res).catch(next);
   });
 
   return router;

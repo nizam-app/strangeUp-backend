@@ -6,6 +6,11 @@ import type {
 } from "../../../generated/prisma/client.js";
 import type { PolicyActor } from "./account-policy.js";
 import { hasFullAccountAccess } from "./account-policy.js";
+import {
+  hasTrustedKycForEnforcement,
+  type KycEnforcementContext,
+  type KycTrustSnapshot,
+} from "../verification/kyc-trust.js";
 
 export type DiscoverUserSnapshot = {
   userId: string;
@@ -15,10 +20,32 @@ export type DiscoverUserSnapshot = {
   suspendedAt: Date | null;
   deletedAt: Date | null;
   identityVerificationStatus: IdentityVerificationStatus;
+  identityVerificationApprovedAt: Date | null;
+  identityVerificationValidUntil: Date | null;
+  identityVerificationRevokedAt: Date | null;
 };
 
-export function hasTrustedGovernmentIdKycApproved(user: DiscoverUserSnapshot): boolean {
-  return user.identityVerificationStatus === "APPROVED";
+export type PublicKycContext = KycEnforcementContext;
+
+const DEFAULT_PUBLIC_KYC_CONTEXT: PublicKycContext = {
+  isProduction: false,
+  kycProviderEnabled: false,
+};
+
+function snapshotToKycTrust(user: DiscoverUserSnapshot): KycTrustSnapshot {
+  return {
+    identityVerificationStatus: user.identityVerificationStatus,
+    identityVerificationApprovedAt: user.identityVerificationApprovedAt,
+    identityVerificationValidUntil: user.identityVerificationValidUntil,
+    identityVerificationRevokedAt: user.identityVerificationRevokedAt,
+  };
+}
+
+export function hasTrustedGovernmentIdKycApproved(
+  user: DiscoverUserSnapshot,
+  ctx: PublicKycContext = DEFAULT_PUBLIC_KYC_CONTEXT,
+): boolean {
+  return hasTrustedKycForEnforcement(snapshotToKycTrust(user), ctx);
 }
 
 /** Eligible to appear as a discovery/public profile target (D-03/D-04). */
@@ -40,11 +67,12 @@ export function canBrowseDiscovery(actor: PolicyActor): boolean {
 export function canViewTargetVisibility(
   viewer: DiscoverUserSnapshot,
   targetVisibility: ProfileVisibility,
+  ctx: PublicKycContext = DEFAULT_PUBLIC_KYC_CONTEXT,
 ): boolean {
   if (targetVisibility === "EVERYONE") {
     return true;
   }
-  return hasTrustedGovernmentIdKycApproved(viewer);
+  return hasTrustedGovernmentIdKycApproved(viewer, ctx);
 }
 
 /**
@@ -56,6 +84,7 @@ export function canViewPublicProfile(
   target: DiscoverUserSnapshot,
   targetVisibility: ProfileVisibility,
   blockedEitherDirection: boolean,
+  ctx: PublicKycContext = DEFAULT_PUBLIC_KYC_CONTEXT,
 ): boolean {
   const viewerActor: PolicyActor = {
     userId: viewer.userId,
@@ -81,7 +110,7 @@ export function canViewPublicProfile(
     return true;
   }
 
-  return canViewTargetVisibility(viewer, targetVisibility);
+  return canViewTargetVisibility(viewer, targetVisibility, ctx);
 }
 
 export function toDiscoverUserSnapshot(user: {
@@ -92,6 +121,9 @@ export function toDiscoverUserSnapshot(user: {
   suspendedAt: Date | null;
   deletedAt: Date | null;
   identityVerificationStatus: IdentityVerificationStatus;
+  identityVerificationApprovedAt?: Date | null;
+  identityVerificationValidUntil?: Date | null;
+  identityVerificationRevokedAt?: Date | null;
 }): DiscoverUserSnapshot {
   return {
     userId: user.id,
@@ -101,5 +133,8 @@ export function toDiscoverUserSnapshot(user: {
     suspendedAt: user.suspendedAt,
     deletedAt: user.deletedAt,
     identityVerificationStatus: user.identityVerificationStatus,
+    identityVerificationApprovedAt: user.identityVerificationApprovedAt ?? null,
+    identityVerificationValidUntil: user.identityVerificationValidUntil ?? null,
+    identityVerificationRevokedAt: user.identityVerificationRevokedAt ?? null,
   };
 }

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import type { ActivityMode, User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
@@ -7,9 +6,9 @@ import { processAvatarUpload } from "../profile-media/avatar-image-processor.js"
 import { toPolicyActor } from "../policy/account-policy.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { decodeActivityCreatedCursor, encodeActivityCreatedCursor } from "./activity-cursor.js";
-import type { LocalActivityCoverStorage } from "./activity-cover.storage.js";
+import type { ActivityCoverStorage } from "./activity-cover.storage.js";
 import { activityForbidden, activityKycRequired, activityNotFound } from "./activity-errors.js";
-import type { ActivityKycEnforcementContext } from "./activity-kyc.js";
+import { toKycTrustSnapshot, type ActivityKycEnforcementContext } from "./activity-kyc.js";
 import {
   activityPublicSelect,
   hostPreviewForViewer,
@@ -36,7 +35,7 @@ import type {
 export class ActivityHostService {
   constructor(
     private readonly db: DatabaseClient,
-    private readonly coverStorage: LocalActivityCoverStorage,
+    private readonly coverStorage: ActivityCoverStorage,
     private readonly kyc: ActivityKycEnforcementContext,
   ) {}
 
@@ -331,9 +330,7 @@ export class ActivityHostService {
     if (!row.coverStorageKey || !row.coverContentType) {
       throw activityNotFound();
     }
-    this.coverStorage.assertStorageKeyOwnedByHost(row.coverStorageKey, host.id);
-    const absolutePath = this.coverStorage.resolveAbsolutePath(row.coverStorageKey);
-    const buffer = await readFile(absolutePath);
+    const buffer = await this.coverStorage.readBytes(row.coverStorageKey, host.id);
     return { buffer, contentType: row.coverContentType };
   }
 
@@ -369,7 +366,7 @@ export class ActivityHostService {
     if (!requiresKycForPublish(mode)) {
       return;
     }
-    if (!hasTrustedKycForActivityAction(host.identityVerificationStatus, this.kyc)) {
+    if (!hasTrustedKycForActivityAction(toKycTrustSnapshot(host), this.kyc)) {
       throw activityKycRequired();
     }
   }

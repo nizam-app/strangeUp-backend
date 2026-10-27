@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
@@ -15,7 +14,7 @@ import {
   loadMembership,
   type GroupPublicRow,
 } from "./group-access.js";
-import { LocalGroupCoverStorage } from "./group-cover.storage.js";
+import type { GroupCoverStorage } from "./group-cover.storage.js";
 import {
   canDecreaseMemberCapacity,
   canNonMemberSeeCover,
@@ -61,7 +60,7 @@ function membershipDto(
 export class GroupService {
   constructor(
     private readonly db: DatabaseClient,
-    private readonly coverStorage: LocalGroupCoverStorage,
+    private readonly coverStorage: GroupCoverStorage,
   ) {}
 
   async listCategories(viewer: User): Promise<{ categories: GroupCategoryDto[] }> {
@@ -431,9 +430,7 @@ export class GroupService {
     if (!memberActive && !canNonMemberSeeCover({ privacy: group.privacy, status: group.status })) {
       throw groupNotFound();
     }
-    this.coverStorage.assertStorageKeyOwnedByGroup(group.coverStorageKey, groupId);
-    const absolutePath = this.coverStorage.resolveAbsolutePath(group.coverStorageKey);
-    const buffer = await readFile(absolutePath);
+    const buffer = await this.coverStorage.readBytes(group.coverStorageKey, groupId);
     return { buffer, contentType: group.coverContentType };
   }
 

@@ -1,0 +1,88 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Store (Merchandise) API
+  version: 0.1.0-task014
+paths:
+  /v1/store/categories:
+    get:
+      summary: Active merchandise categories (taxonomy)
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Category slugs/labels; no products implied
+        "403":
+          description: AUTH_FORBIDDEN — full account required
+  /v1/store/products:
+    get:
+      summary: Published product catalog (no ratings/member pricing)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string }
+        - in: query
+          name: size
+          schema: { type: string }
+        - in: query
+          name: color
+          schema: { type: string }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        "200":
+          description: Product summaries with server catalog pricing hints
+  /v1/store/products/{productId}:
+    get:
+      summary: Published product detail with variants
+      security:
+        - bearerAuth: []
+      responses:
+        "404":
+          description: Unpublished or missing product
+  /v1/me/store/favorites:
+    get:
+      summary: Self favorites (published products only)
+      security:
+        - bearerAuth: []
+  /v1/me/store/favorites/{productId}:
+    put:
+      summary: Idempotent favorite add
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Idempotent favorite remove
+      security:
+        - bearerAuth: []
+  /v1/me/store/cart:
+    get:
+      summary: Self cart with subtotal and checkout UNAVAILABLE
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Clear cart (no order side effects)
+      security:
+        - bearerAuth: []
+  /v1/me/store/cart/items/{variantId}:
+    put:
+      summary: Set line quantity (0 removes); server prices only
+      security:
+        - bearerAuth: []
+    delete:
+      summary: Remove cart line
+      security:
+        - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

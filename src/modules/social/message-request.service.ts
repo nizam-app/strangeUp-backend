@@ -19,9 +19,17 @@ import {
 import { SOCIAL_LIST_DEFAULT_LIMIT, SOCIAL_LIST_MAX_LIMIT } from "./social.constants.js";
 import { toSocialUserPreview, type MessageRequestDto } from "./social.dto.js";
 import type { MessageRequestListQuery } from "./social.validation.js";
+import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
 
 export class MessageRequestService {
-  constructor(private readonly db: DatabaseClient) {}
+  private readonly notifications: NotificationEmitter;
+
+  constructor(
+    private readonly db: DatabaseClient,
+    notifications?: NotificationEmitter,
+  ) {
+    this.notifications = notifications ?? new NotificationEmitter(db);
+  }
 
   async create(
     viewer: User,
@@ -45,6 +53,15 @@ export class MessageRequestService {
         recipientId: targetUserId,
         status: "PENDING",
       },
+    });
+    await this.notifications.emit({
+      recipientId: targetUserId,
+      type: "MESSAGE_REQUEST_RECEIVED",
+      actorUserId: viewer.id,
+      sourceId: created.id,
+      title: "New message request",
+      body: "Someone sent you a message request.",
+      dedupeKey: `message-request:${created.id}`,
     });
     return { dto: await this.toDto(viewer, created.id, loaded.blocked), created: true };
   }
@@ -179,6 +196,16 @@ export class MessageRequestService {
           data: { status: "ACCEPTED", conversationId: conversation.id, respondedAt: now },
         });
       }
+
+      await this.notifications.emitInTransaction(tx, {
+        recipientId: request.senderId,
+        type: "MESSAGE_REQUEST_ACCEPTED",
+        actorUserId: viewer.id,
+        sourceId: conversation.id,
+        title: "Message request accepted",
+        body: "You can now send direct messages.",
+        dedupeKey: `message-request-accepted:${request.id}`,
+      });
     });
     return this.toDto(viewer, requestId, false);
   }

@@ -1,0 +1,41 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Home Dashboard API
+  version: 0.1.0-task013
+paths:
+  /v1/home:
+    get:
+      summary: Authenticated home dashboard composition
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Bounded dashboard sections (no stories LIVE)
+        "401":
+          description: AUTH_UNAUTHORIZED
+        "403":
+          description: AUTH_FORBIDDEN
+  /v1/me/community-feed:
+    get:
+      summary: Cross-group community feed for active memberships
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+        - in: query
+          name: groupId
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Feed items with optional linked public activity cards
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

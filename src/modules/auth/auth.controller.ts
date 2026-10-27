@@ -15,9 +15,12 @@ import {
   refreshBodySchema,
   registerBodySchema,
 } from "./auth.validation.js";
+import { buildConsentRegistryContext } from "../consent/consent-context.js";
+import { validateRegistrationConsents } from "../consent/canonical-consent-registry.js";
 import { hashIp } from "./crypto.js";
-import { checkRateLimit } from "./rate-limit.js";
+import { checkRateLimit, throwIfRateLimited } from "./rate-limit.js";
 import type { EmailSender } from "./email-sender.js";
+import type { Logger } from "pino";
 
 const IDEMPOTENCY_HEADER = "idempotency-key";
 
@@ -33,20 +36,20 @@ export function createAuthController(deps: {
   db: DatabaseClient;
   env: AppEnv;
   emailSender: EmailSender;
+  logger: Logger;
 }) {
-  const authService = new AuthService(deps.db, deps.env.auth, deps.emailSender);
+  const authService = new AuthService(deps.db, deps.env.auth, deps.emailSender, deps.logger);
 
   return {
     register: async (req: Request, res: Response): Promise<void> => {
       const ip = clientIp(req);
-      const registerLimit = checkRateLimit(
-        `register:ip:${ip}`,
-        deps.env.auth.AUTH_RATE_LIMIT_REGISTER_PER_IP,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `register:ip:${ip}`,
+          deps.env.auth.AUTH_RATE_LIMIT_REGISTER_PER_IP,
+          60_000,
+        ),
       );
-      if (!registerLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
 
       const body = registerBodySchema.parse(req.body);
       const idempotencyKey = req.header(IDEMPOTENCY_HEADER)?.trim();
@@ -60,13 +63,26 @@ export function createAuthController(deps: {
         }
       }
 
+      const consentCtx = buildConsentRegistryContext(deps.env);
+      const consentValidation = validateRegistrationConsents(body.consents, consentCtx);
+      if (!consentValidation.ok) {
+        const status = consentValidation.code === "CONSENT_VERSION_UNAVAILABLE" ? 503 : 400;
+        throw new AppError(
+          consentValidation.code === "CONSENT_VERSION_UNAVAILABLE"
+            ? "SERVICE_UNAVAILABLE"
+            : "VALIDATION_ERROR",
+          consentValidation.message,
+          status,
+        );
+      }
+
       const result = await authService.register({
         firstName: body.firstName,
         lastName: body.lastName,
         email: body.email,
         password: body.password,
         dateOfBirth: body.dateOfBirth,
-        consents: body.consents,
+        consents: consentValidation.normalized,
         ipHash: hashIp(ip),
       });
 
@@ -87,22 +103,16 @@ export function createAuthController(deps: {
       const ip = clientIp(req);
       const emailKey = createHash("sha256").update(body.email.toLowerCase(), "utf8").digest("hex");
 
-      const ipLimit = checkRateLimit(
-        `login:ip:${ip}`,
-        deps.env.auth.AUTH_RATE_LIMIT_LOGIN_PER_IP,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(`login:ip:${ip}`, deps.env.auth.AUTH_RATE_LIMIT_LOGIN_PER_IP, 60_000),
       );
-      if (!ipLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
-      const emailLimit = checkRateLimit(
-        `login:email:${emailKey}`,
-        deps.env.auth.AUTH_RATE_LIMIT_LOGIN_PER_EMAIL,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `login:email:${emailKey}`,
+          deps.env.auth.AUTH_RATE_LIMIT_LOGIN_PER_EMAIL,
+          60_000,
+        ),
       );
-      if (!emailLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
 
       const { tokens, user } = await authService.login(body.email, body.password, {
         userAgent: req.header("user-agent") ?? undefined,
@@ -145,14 +155,13 @@ export function createAuthController(deps: {
       if (!req.authUser) {
         throw new AppError("AUTH_UNAUTHORIZED", "Not authenticated", 401);
       }
-      const verifyLimit = checkRateLimit(
-        `email-verify:user:${req.authUser.id}`,
-        deps.env.auth.AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `email-verify:user:${req.authUser.id}`,
+          deps.env.auth.AUTH_RATE_LIMIT_EMAIL_VERIFY_PER_USER,
+          60_000,
+        ),
       );
-      if (!verifyLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
       await authService.requestEmailVerification(req.authUser.id);
       res.status(202).json({
         data: { message: "If verification is required, instructions were sent." },
@@ -177,22 +186,20 @@ export function createAuthController(deps: {
       const ip = clientIp(req);
       const emailKey = createHash("sha256").update(body.email.toLowerCase(), "utf8").digest("hex");
 
-      const ipLimit = checkRateLimit(
-        `password-reset:ip:${ip}`,
-        deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `password-reset:ip:${ip}`,
+          deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_RESET_PER_IP,
+          60_000,
+        ),
       );
-      if (!ipLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
-      const emailLimit = checkRateLimit(
-        `password-reset:email:${emailKey}`,
-        deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL,
-        60_000,
+      throwIfRateLimited(
+        await checkRateLimit(
+          `password-reset:email:${emailKey}`,
+          deps.env.auth.AUTH_RATE_LIMIT_PASSWORD_RESET_PER_EMAIL,
+          60_000,
+        ),
       );
-      if (!emailLimit.allowed) {
-        throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-      }
 
       await authService.requestPasswordReset(body.email);
       res.status(202).json({

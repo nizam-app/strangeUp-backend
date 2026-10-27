@@ -5,6 +5,7 @@ import type {
   CommunityMembershipRole,
   CommunityMembershipStatus,
 } from "../../../generated/prisma/client.js";
+import type { GroupPollDto, GroupPostPhotoDto } from "../group-content/group-content.dto.js";
 import type { PublicProfilePreviewDto } from "../discovery/public-profile.dto.js";
 import { toPublicProfilePreview } from "../discovery/public-profile.dto.js";
 import {
@@ -78,6 +79,10 @@ export type GroupPostDto = {
   likedByMe: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Populated only when GROUP_COMMUNITY_INTERACTIVE_ENABLED (D-06 approved activation). */
+  photo: GroupPostPhotoDto | null;
+  /** Populated only when GROUP_COMMUNITY_INTERACTIVE_ENABLED (D-06 approved activation). */
+  poll: GroupPollDto | null;
 };
 
 export type GroupCommentDto = {

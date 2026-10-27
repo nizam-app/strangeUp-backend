@@ -33,6 +33,7 @@ import type {
   MarkConversationReadInput,
   SendDirectMessageInput,
 } from "./social.validation.js";
+import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
 
 const counterpartSelect = {
   id: true,
@@ -55,7 +56,14 @@ const counterpartSelect = {
 } as const;
 
 export class ConversationService {
-  constructor(private readonly db: DatabaseClient) {}
+  private readonly notifications: NotificationEmitter;
+
+  constructor(
+    private readonly db: DatabaseClient,
+    notifications?: NotificationEmitter,
+  ) {
+    this.notifications = notifications ?? new NotificationEmitter(db);
+  }
 
   async list(
     viewer: User,
@@ -260,6 +268,17 @@ export class ConversationService {
             updatedAt: created.createdAt,
           },
         });
+
+        await this.notifications.emitInTransaction(tx, {
+          recipientId: otherId,
+          type: "DIRECT_MESSAGE_RECEIVED",
+          actorUserId: viewer.id,
+          sourceId: conversationId,
+          title: "New message",
+          body: truncatePreview(input.body, SOCIAL_PREVIEW_MAX),
+          dedupeKey: `direct-message:${conversationId}:${otherId}`,
+        });
+
         return {
           messageId: created.id,
           conversationId: created.conversationId,

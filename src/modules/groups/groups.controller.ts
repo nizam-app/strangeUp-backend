@@ -3,13 +3,24 @@ import type { AppEnv } from "../../config/env.js";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import { checkRateLimit } from "../auth/rate-limit.js";
-import { LocalGroupCoverStorage } from "./group-cover.storage.js";
+import { checkRateLimit, throwIfRateLimited } from "../auth/rate-limit.js";
+import { createAppMediaStorages } from "../../infrastructure/media-storage/create-media-storages.js";
 import { GroupActivityService } from "./group-activity.service.js";
 import { GroupChatService } from "./group-chat.service.js";
 import { GroupMembershipService } from "./group-membership.service.js";
 import { GroupPostService } from "./group-post.service.js";
 import { GroupService } from "./group.service.js";
+import { GroupPostMediaService } from "../group-content/group-post-media.service.js";
+import { GroupStoryService } from "../group-content/group-story.service.js";
+import { GroupPollService } from "../group-content/group-poll.service.js";
+import { GroupContentReportService } from "../group-content/group-content-report.service.js";
+import {
+  createContentReportBodySchema,
+  createGroupPollBodySchema,
+  groupMediaIdParamSchema,
+  groupStoryIdParamSchema,
+  voteGroupPollBodySchema,
+} from "../group-content/group-content.validation.js";
 import {
   attachGroupActivityBodySchema,
   changeMemberRoleBodySchema,
@@ -41,18 +52,20 @@ function requireUser(req: AuthenticatedRequest) {
   return req.authUser;
 }
 
-function enforceLimit(key: string, limit: number): void {
-  const result = checkRateLimit(key, limit, 60_000);
-  if (!result.allowed) {
-    throw new AppError("AUTH_RATE_LIMITED", "Too many requests", 429);
-  }
+async function enforceLimit(key: string, limit: number): Promise<void> {
+  throwIfRateLimited(await checkRateLimit(key, limit, 60_000));
 }
 
 export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv }) {
-  const coverStorage = new LocalGroupCoverStorage(deps.env.GROUP_UPLOAD_DIR);
-  const groupService = new GroupService(deps.db, coverStorage);
+  const mediaStorages = createAppMediaStorages(deps.env);
+  const groupService = new GroupService(deps.db, mediaStorages.groupCover);
   const membershipService = new GroupMembershipService(deps.db);
-  const postService = new GroupPostService(deps.db);
+  const contentStorage = mediaStorages.groupContent;
+  const postService = new GroupPostService(deps.db, deps.env);
+  const postMediaService = new GroupPostMediaService(deps.db, deps.env, contentStorage);
+  const storyService = new GroupStoryService(deps.db, deps.env, contentStorage);
+  const pollService = new GroupPollService(deps.db, deps.env);
+  const reportService = new GroupContentReportService(deps.db, deps.env);
   const chatService = new GroupChatService(deps.db);
   const activityService = new GroupActivityService(deps.db);
 
@@ -96,7 +109,7 @@ export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv 
 
     create: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
-      enforceLimit(`groups:create:${user.id}`, deps.env.GROUP_RATE_LIMIT_CREATE_PER_USER);
+      await enforceLimit(`groups:create:${user.id}`, deps.env.GROUP_RATE_LIMIT_CREATE_PER_USER);
       const body = createGroupBodySchema.parse(req.body);
       const data = await groupService.create(user, body);
       res.status(201).json({ data, meta: { requestId: req.requestId } });
@@ -129,7 +142,7 @@ export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv 
 
     join: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
-      enforceLimit(`groups:join:${user.id}`, deps.env.GROUP_RATE_LIMIT_JOIN_PER_USER);
+      await enforceLimit(`groups:join:${user.id}`, deps.env.GROUP_RATE_LIMIT_JOIN_PER_USER);
       const { groupId } = groupIdParamSchema.parse(req.params);
       const data = await membershipService.join(user, groupId);
       res.status(200).json({ data, meta: { requestId: req.requestId } });
@@ -211,7 +224,7 @@ export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv 
 
     createPost: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
-      enforceLimit(`groups:post:${user.id}`, deps.env.GROUP_RATE_LIMIT_POST_PER_USER);
+      await enforceLimit(`groups:post:${user.id}`, deps.env.GROUP_RATE_LIMIT_POST_PER_USER);
       const { groupId } = groupIdParamSchema.parse(req.params);
       const body = createGroupPostBodySchema.parse(req.body);
       const data = await postService.createPost(user, groupId, body);
@@ -250,7 +263,7 @@ export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv 
 
     createComment: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
-      enforceLimit(`groups:comment:${user.id}`, deps.env.GROUP_RATE_LIMIT_POST_PER_USER);
+      await enforceLimit(`groups:comment:${user.id}`, deps.env.GROUP_RATE_LIMIT_POST_PER_USER);
       const { groupId, postId } = groupPostIdParamSchema.parse(req.params);
       const body = createGroupCommentBodySchema.parse(req.body);
       const data = await postService.createComment(user, groupId, postId, body);
@@ -296,7 +309,7 @@ export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv 
 
     sendMessage: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const user = requireUser(req);
-      enforceLimit(`groups:message:${user.id}`, deps.env.GROUP_RATE_LIMIT_MESSAGE_PER_USER);
+      await enforceLimit(`groups:message:${user.id}`, deps.env.GROUP_RATE_LIMIT_MESSAGE_PER_USER);
       const { groupId } = groupIdParamSchema.parse(req.params);
       const body = sendGroupMessageBodySchema.parse(req.body);
       const data = await chatService.sendMessage(user, groupId, body);
@@ -331,6 +344,100 @@ export function createGroupsControllers(deps: { db: DatabaseClient; env: AppEnv 
       const { groupId, activityId } = groupActivityIdParamSchema.parse(req.params);
       const data = await activityService.detach(requireUser(req), groupId, activityId);
       res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    attachPostMedia: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const user = requireUser(req);
+      await enforceLimit(`groups:media:${user.id}`, deps.env.GROUP_RATE_LIMIT_MEDIA_PER_USER);
+      const { groupId, postId } = groupPostIdParamSchema.parse(req.params);
+      const data = await postMediaService.attachPhoto(user, groupId, postId, req.file);
+      res.status(201).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    getPostMedia: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, postId, mediaId } = groupMediaIdParamSchema.parse(req.params);
+      const { buffer, contentType } = await postMediaService.getPhotoBytes(
+        requireUser(req),
+        groupId,
+        postId,
+        mediaId,
+      );
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.status(200).send(buffer);
+    },
+
+    removePostMedia: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, postId, mediaId } = groupMediaIdParamSchema.parse(req.params);
+      const data = await postMediaService.removePhoto(requireUser(req), groupId, postId, mediaId);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    listStories: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId } = groupIdParamSchema.parse(req.params);
+      const data = await storyService.listStories(requireUser(req), groupId);
+      res.status(200).json({ data: { stories: data }, meta: { requestId: req.requestId } });
+    },
+
+    createStory: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const user = requireUser(req);
+      await enforceLimit(`groups:story:${user.id}`, deps.env.GROUP_RATE_LIMIT_STORY_PER_USER);
+      const { groupId } = groupIdParamSchema.parse(req.params);
+      const data = await storyService.createStory(user, groupId, req.file);
+      res.status(201).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    getStoryMedia: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, storyId } = groupStoryIdParamSchema.parse(req.params);
+      const { buffer, contentType } = await storyService.getStoryMediaBytes(
+        requireUser(req),
+        groupId,
+        storyId,
+      );
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "private, no-store");
+      res.status(200).send(buffer);
+    },
+
+    removeStory: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, storyId } = groupStoryIdParamSchema.parse(req.params);
+      const data = await storyService.removeStory(requireUser(req), groupId, storyId);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    createPoll: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, postId } = groupPostIdParamSchema.parse(req.params);
+      const body = createGroupPollBodySchema.parse(req.body);
+      const data = await pollService.createPoll(requireUser(req), groupId, postId, body);
+      res.status(201).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    getPoll: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, postId } = groupPostIdParamSchema.parse(req.params);
+      const data = await pollService.getPoll(requireUser(req), groupId, postId);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    votePoll: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId, postId } = groupPostIdParamSchema.parse(req.params);
+      const body = voteGroupPollBodySchema.parse(req.body);
+      const data = await pollService.vote(requireUser(req), groupId, postId, body);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    createContentReport: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const user = requireUser(req);
+      await enforceLimit(`groups:report:${user.id}`, deps.env.GROUP_RATE_LIMIT_REPORT_PER_USER);
+      const { groupId } = groupIdParamSchema.parse(req.params);
+      const body = createContentReportBodySchema.parse(req.body);
+      const data = await reportService.createReport(user, groupId, body);
+      res.status(201).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    listContentReports: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { groupId } = groupIdParamSchema.parse(req.params);
+      const data = await reportService.listOpenForModerators(requireUser(req), groupId);
+      res.status(200).json({ data: { reports: data }, meta: { requestId: req.requestId } });
     },
   };
 }

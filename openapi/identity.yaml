@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: StrangeUp Identity API (Phase 1)
   version: 0.1.0
-  description: Identity Phase 1 (Tasks 002B.1–002B.2). Email/password auth, password reset, self account/profile. Uses foundation envelope.
+  description: Identity Phase 1 (Tasks 002B.1–002B.2). Email/password auth, password reset, self account/profile. Transactional email `TRANSACTIONAL_EMAIL_MODE` dev_stub | disabled | provider (Resend adapter). Rate limits `RATE_LIMIT_STORE` memory | fail_closed | redis (Upstash rediss:// via ioredis). Provider modes require deployment secrets; handed_to_provider ≠ inbox delivery.
 servers:
   - url: http://localhost:3000
 paths:
