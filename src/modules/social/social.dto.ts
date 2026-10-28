@@ -88,6 +88,22 @@ export type ConversationSummaryDto = {
   updatedAt: string;
 };
 
+/** Task 023A — header/message badge aggregates (REST only; no sockets). */
+export type MessagingSummaryDto = {
+  /** Unread 1:1 messages from others in accepted conversations (blocked threads excluded). */
+  directUnread: number;
+  /** Unread group chat messages from others in ACTIVE memberships (blocked authors excluded). */
+  groupUnread: number;
+  /** Pending inbox message requests (not blocked senders). Not included in `totalUnreadMessages`. */
+  messageRequestsPending: number;
+  /** `directUnread + groupUnread` — use for Messages tab badge; excludes requests and notifications. */
+  totalUnreadMessages: number;
+  /** Same as `totalUnreadMessages` (alias for header composition). */
+  displayBadgeCount: number;
+  directConversationsWithUnread: number;
+  groupChatsWithUnread: number;
+};
+
 export type PublicProfileSocialDto = {
   followerCount: number;
   followingCount: number;

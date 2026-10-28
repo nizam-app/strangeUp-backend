@@ -21,6 +21,9 @@ import { createSavedActivitiesController } from "../saved-activities/saved-activ
 import { createSettingsController } from "../settings/settings.controller.js";
 import { createMeMembershipRouter } from "../membership/membership.routes.js";
 import { createVerificationRouter } from "../verification/verification.routes.js";
+import { createOnboardingController } from "../onboarding/onboarding.controller.js";
+import { createRequireHomeAccessMiddleware } from "../../common/middleware/require-home-access.js";
+import { createPushDevicesRouter } from "../push-devices/push-devices.routes.js";
 
 export function createMeRouter(deps: {
   db: DatabaseClient;
@@ -38,6 +41,12 @@ export function createMeRouter(deps: {
   const savedActivitiesController = createSavedActivitiesController(deps);
   const settingsController = createSettingsController(deps);
   const authenticate = createAuthenticateMiddleware(deps.authService);
+  const onboardingController = createOnboardingController(deps);
+  const requireHomeAccess = createRequireHomeAccessMiddleware(deps);
+
+  router.get("/onboarding/status", authenticate, (req, res, next) => {
+    void onboardingController.getStatus(req, res).catch(next);
+  });
 
   router.use("/verification", createVerificationRouter(deps));
 
@@ -54,10 +63,6 @@ export function createMeRouter(deps: {
     void controller.changePassword(req, res).catch(next);
   });
 
-  router.get("/settings/overview", authenticate, (req, res, next) => {
-    void settingsController.getOverview(req, res).catch(next);
-  });
-  router.use(createMeMembershipRouter(deps));
   router.get("/account-deletion/impact", authenticate, (req, res, next) => {
     void settingsController.getAccountDeletionImpact(req, res).catch(next);
   });
@@ -67,6 +72,13 @@ export function createMeRouter(deps: {
   router.delete("/security/sessions/:sessionId", authenticate, (req, res, next) => {
     void settingsController.revokeSession(req, res).catch(next);
   });
+
+  router.use(authenticate, requireHomeAccess);
+
+  router.get("/settings/overview", authenticate, (req, res, next) => {
+    void settingsController.getOverview(req, res).catch(next);
+  });
+  router.use(createMeMembershipRouter(deps));
   router.post("/email-change/request", authenticate, (req, res, next) => {
     void settingsController.requestEmailChange(req, res).catch(next);
   });
@@ -126,6 +138,7 @@ export function createMeRouter(deps: {
   });
 
   router.use(createMeActivitiesRouter(deps));
+  router.use(createPushDevicesRouter(deps));
   router.use(createMeSocialRouter(deps));
   router.use(createMeGroupsRouter(deps));
   router.use(createMeHomeRouter(deps));

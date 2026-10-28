@@ -21,6 +21,10 @@ import type {
   MarkGroupChatReadInput,
   SendGroupMessageInput,
 } from "./group.validation.js";
+import {
+  publishGroupMessageSafe,
+  publishGroupReadSafe,
+} from "../messaging-realtime/messaging-realtime.publish.js";
 
 export class GroupChatService {
   constructor(private readonly db: DatabaseClient) {}
@@ -109,6 +113,45 @@ export class GroupChatService {
     };
   }
 
+  /** Task 023A — aggregate unread across all ACTIVE member group chats. */
+  async summarizeUnread(
+    viewer: User,
+  ): Promise<{ unreadMessages: number; groupChatsWithUnread: number }> {
+    assertGroupAccess(viewer);
+    const memberships = await this.db.communityMembership.findMany({
+      where: { userId: viewer.id, status: "ACTIVE" },
+      select: { groupId: true },
+    });
+    if (memberships.length === 0) {
+      return { unreadMessages: 0, groupChatsWithUnread: 0 };
+    }
+
+    const groupIds = memberships.map((m) => m.groupId);
+    const readStates = await this.db.communityGroupReadState.findMany({
+      where: { userId: viewer.id, groupId: { in: groupIds } },
+      select: { groupId: true, lastReadMessageId: true, lastReadAt: true },
+    });
+    const readByGroup = new Map(readStates.map((state) => [state.groupId, state]));
+
+    let unreadMessages = 0;
+    let groupChatsWithUnread = 0;
+
+    for (const { groupId } of memberships) {
+      const readState = readByGroup.get(groupId);
+      const watermark =
+        readState?.lastReadMessageId && readState.lastReadAt
+          ? { id: readState.lastReadMessageId, createdAt: readState.lastReadAt }
+          : null;
+      const count = await this.countUnread(groupId, viewer.id, watermark);
+      if (count > 0) {
+        groupChatsWithUnread += 1;
+      }
+      unreadMessages += count;
+    }
+
+    return { unreadMessages, groupChatsWithUnread };
+  }
+
   async listMessages(
     viewer: User,
     groupId: string,
@@ -194,13 +237,20 @@ export class GroupChatService {
         },
       });
       if (existing) {
-        return {
+        const dto = {
           messageId: existing.id,
           groupId: existing.groupId,
           authorUserId: existing.authorId,
           body: existing.body,
           createdAt: existing.createdAt.toISOString(),
         };
+        publishGroupMessageSafe({
+          groupId,
+          message: dto,
+          clientMessageId: input.clientMessageId ?? null,
+          newlyPersisted: false,
+        });
+        return dto;
       }
     }
 
@@ -213,13 +263,20 @@ export class GroupChatService {
           clientMessageId: input.clientMessageId ?? null,
         },
       });
-      return {
+      const dto = {
         messageId: row.id,
         groupId: row.groupId,
         authorUserId: row.authorId,
         body: row.body,
         createdAt: row.createdAt.toISOString(),
       };
+      publishGroupMessageSafe({
+        groupId,
+        message: dto,
+        clientMessageId: input.clientMessageId ?? null,
+        newlyPersisted: true,
+      });
+      return dto;
     } catch (err) {
       if (
         err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -236,13 +293,20 @@ export class GroupChatService {
           },
         });
         if (existing) {
-          return {
+          const dto = {
             messageId: existing.id,
             groupId: existing.groupId,
             authorUserId: existing.authorId,
             body: existing.body,
             createdAt: existing.createdAt.toISOString(),
           };
+          publishGroupMessageSafe({
+            groupId,
+            message: dto,
+            clientMessageId: input.clientMessageId ?? null,
+            newlyPersisted: false,
+          });
+          return dto;
         }
       }
       throw err;
@@ -302,7 +366,13 @@ export class GroupChatService {
 
     const watermark =
       next && shouldAdvanceReadWatermark(currentPointer, next) ? next : currentPointer;
-    return { unreadCount: await this.countUnread(groupId, viewer.id, watermark) };
+    const unreadCount = await this.countUnread(groupId, viewer.id, watermark);
+    publishGroupReadSafe({
+      groupId,
+      readerUserId: viewer.id,
+      unreadCount,
+    });
+    return { unreadCount };
   }
 
   private async countUnread(

@@ -323,6 +323,9 @@ export class ActivityRsvpService {
             identityVerificationApprovedAt: true,
             identityVerificationValidUntil: true,
             identityVerificationRevokedAt: true,
+            identityVerificationSessionId: true,
+            adminReviewStatus: true,
+            adminReviewVerificationSessionId: true,
           },
         },
       },
@@ -335,14 +338,7 @@ export class ActivityRsvpService {
       hasOpenSeat: confirmedCount < activity.capacity,
       nextQueued: next
         ? {
-            accountEligible: hasFullAccountAccess({
-              userId: next.user.id,
-              accountStatus: next.user.accountStatus,
-              emailVerifiedAt: next.user.emailVerifiedAt,
-              ageEligibilityStatus: next.user.ageEligibilityStatus,
-              suspendedAt: next.user.suspendedAt,
-              deletedAt: next.user.deletedAt,
-            }),
+            accountEligible: hasFullAccountAccess(toPolicyActor(next.user), this.kyc),
             blockedWithHost: blocked,
             kycTrust: toKycTrustSnapshot(next.user),
           }

@@ -270,13 +270,21 @@ export class AuthService {
           where: { id: session.id },
           data: { revokedAt: new Date() },
         });
+        await this.afterSessionRevoked(session.id, session.userId);
         return;
       }
     }
+    const sessions = await this.db.session.findMany({
+      where: { id: sessionId, revokedAt: null },
+      select: { id: true, userId: true },
+    });
     await this.db.session.updateMany({
       where: { id: sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    for (const row of sessions) {
+      await this.afterSessionRevoked(row.id, row.userId);
+    }
   }
 
   async logoutAll(userId: string): Promise<void> {
@@ -284,6 +292,25 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    const { onUserLogoutAll } = await import(
+      "../messaging-realtime/messaging-realtime.lifecycle.js"
+    );
+    const { revokeDeviceTokensForUser } = await import(
+      "../push-devices/device-token.service.js"
+    );
+    void onUserLogoutAll(userId).catch(() => undefined);
+    await revokeDeviceTokensForUser(this.db, userId);
+  }
+
+  private async afterSessionRevoked(sessionId: string, userId: string): Promise<void> {
+    const { onSessionRevoked } = await import(
+      "../messaging-realtime/messaging-realtime.lifecycle.js"
+    );
+    const { revokeDeviceTokensForSession } = await import(
+      "../push-devices/device-token.service.js"
+    );
+    void onSessionRevoked(sessionId).catch(() => undefined);
+    await revokeDeviceTokensForSession(this.db, userId, sessionId);
   }
 
   async requestEmailVerification(userId: string): Promise<void> {

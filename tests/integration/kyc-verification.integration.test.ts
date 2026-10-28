@@ -216,6 +216,9 @@ describeKyc("integration: KYC verification and consent (Task 021)", () => {
 
     const userAfter = await db.user.findUnique({ where: { id: userId } });
     expect(userAfter?.identityVerificationStatus).toBe("APPROVED");
+    expect(userAfter?.adminReviewStatus).toBe("PENDING");
+    expect(userAfter?.adminReviewVerificationSessionId).toBe(sessionId);
+    expect(userAfter?.identityVerificationSessionId).toBe(sessionId);
 
     const replay = await request(app)
       .post("/v1/webhooks/verification/mock")

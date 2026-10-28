@@ -32,6 +32,19 @@ enum IdentityVerificationStatus {
   REVOKED
 }
 
+/// StrangeUp platform admin activation (distinct from provider identity APPROVED).
+enum StrangeUpAdminReviewStatus {
+  NOT_READY
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_MORE_INFO
+}
+
+enum PlatformStaffRole {
+  IDENTITY_REVIEWER
+}
+
 enum VerificationProvider {
   MOCK
   VERIFF
@@ -91,6 +104,13 @@ model User {
   identityVerificationApprovedAt DateTime?
   identityVerificationValidUntil DateTime?
   identityVerificationRevokedAt  DateTime?
+  /// Provider session that currently backs identityVerificationStatus (when approved).
+  identityVerificationSessionId String?                  @db.Uuid
+  identityVerificationSession   VerificationSession?     @relation("UserIdentityVerificationSession", fields: [identityVerificationSessionId], references: [id], onDelete: SetNull)
+  adminReviewStatus             StrangeUpAdminReviewStatus @default(NOT_READY)
+  adminReviewVerificationSessionId String?               @db.Uuid
+  adminReviewVerificationSession   VerificationSession?  @relation("UserAdminReviewSession", fields: [adminReviewVerificationSessionId], references: [id], onDelete: SetNull)
+  adminReviewDecidedAt          DateTime?
   suspendedAt                DateTime?
   deletedAt                  DateTime?
   createdAt                  DateTime                   @default(now())
@@ -145,8 +165,67 @@ model User {
   communityContentReportsFiled   CommunityContentReport[]    @relation("CommunityContentReportReporter")
   communityContentReportsReviewed CommunityContentReport[]   @relation("CommunityContentReportReviewer")
   verificationSessions            VerificationSession[]
+  adminReviewDecisions            IdentityAdminReviewDecision[] @relation("IdentityAdminReviewSubject")
+  platformStaffGrants             PlatformStaffGrant[]
+  deviceTokens                    UserDeviceToken[]
+  notificationPreference          UserNotificationPreference?
+  pushOutboxEntries               PushNotificationOutbox[]
 
   @@index([accountStatus])
+  @@index([adminReviewStatus])
+}
+
+enum DevicePlatform {
+  ANDROID
+  IOS
+}
+
+/// FCM registration token storage (Task 023C). Raw token never returned by HTTP APIs.
+model UserDeviceToken {
+  id                String         @id @default(uuid()) @db.Uuid
+  userId            String         @db.Uuid
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform          DevicePlatform
+  tokenSha256       String         @unique
+  registrationToken String
+  deviceBindingId   String         @db.VarChar(128)
+  sessionId         String?        @db.Uuid
+  session           Session?       @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  revokedAt         DateTime?
+  lastSeenAt        DateTime       @default(now())
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([userId, deviceBindingId])
+  @@index([userId, revokedAt])
+  @@index([sessionId])
+}
+
+/// Per-user push category toggles (Task 023C). FCM delivery remains gated until Task 023D.
+model UserNotificationPreference {
+  userId                   String   @id @db.Uuid
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pushEnabled              Boolean  @default(true)
+  directMessagesEnabled    Boolean  @default(true)
+  messageRequestsEnabled   Boolean  @default(true)
+  groupMembershipEnabled   Boolean  @default(true)
+  groupChatEnabled         Boolean  @default(false)
+  activityUpdatesEnabled   Boolean  @default(true)
+  marketingEnabled         Boolean  @default(false)
+  updatedAt                DateTime @updatedAt
+}
+
+model PlatformStaffGrant {
+  id              String            @id @default(uuid()) @db.Uuid
+  userId          String            @db.Uuid
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            PlatformStaffRole
+  grantedAt       DateTime          @default(now())
+  grantedByUserId String?           @db.Uuid
+  revokedAt       DateTime?
+
+  @@unique([userId, role])
+  @@index([role, revokedAt])
 }
 
 enum UserNotificationType {
@@ -158,6 +237,14 @@ enum UserNotificationType {
   ACTIVITY_RSVP_CONFIRMED
   ACTIVITY_RSVP_WAITLISTED
   ACTIVITY_WAITLIST_PROMOTED
+}
+
+enum PushOutboxStatus {
+  PENDING
+  PROCESSING
+  SENT
+  SKIPPED
+  FAILED
 }
 
 model UserNotification {
@@ -174,9 +261,32 @@ model UserNotification {
   readAt      DateTime?
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+  pushOutbox  PushNotificationOutbox?
 
   @@index([recipientId, readAt, createdAt, id])
   @@index([recipientId, createdAt, id])
+}
+
+/// Durable FCM delivery queue (Task 023D). One row per persisted UserNotification.
+model PushNotificationOutbox {
+  id                 String           @id @default(uuid()) @db.Uuid
+  userNotificationId String           @unique @db.Uuid
+  userNotification   UserNotification @relation(fields: [userNotificationId], references: [id], onDelete: Cascade)
+  recipientId        String           @db.Uuid
+  recipient          User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  status             PushOutboxStatus @default(PENDING)
+  attemptCount       Int              @default(0)
+  nextAttemptAt      DateTime         @default(now())
+  lockedAt           DateTime?
+  lockedBy           String?
+  lastErrorCode      String?
+  lastErrorMessage   String?
+  sentAt             DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([recipientId])
 }
 
 model PasswordCredential {
@@ -200,6 +310,7 @@ model Session {
   ipHash           String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+  deviceTokens     UserDeviceToken[]
 
   @@index([userId])
   @@index([familyId])
@@ -1022,6 +1133,22 @@ model JobApplication {
   @@index([applicantUserId, createdAt, id])
 }
 
+model IdentityAdminReviewDecision {
+  id                   String                     @id @default(uuid()) @db.Uuid
+  userId               String                     @db.Uuid
+  user                 User                       @relation("IdentityAdminReviewSubject", fields: [userId], references: [id], onDelete: Cascade)
+  verificationSessionId String                    @db.Uuid
+  verificationSession  VerificationSession        @relation(fields: [verificationSessionId], references: [id], onDelete: Cascade)
+  status               StrangeUpAdminReviewStatus
+  reasonCode           String?
+  reviewerUserId       String?                    @db.Uuid
+  idempotencyKey       String?                    @unique
+  createdAt            DateTime                   @default(now())
+
+  @@index([userId, createdAt])
+  @@index([verificationSessionId, createdAt])
+}
+
 model VerificationSession {
   id                 String                    @id @default(uuid()) @db.Uuid
   userId             String                    @db.Uuid
@@ -1037,6 +1164,9 @@ model VerificationSession {
   updatedAt          DateTime                  @updatedAt
 
   decisions VerificationDecision[]
+  identityBindingForUsers User[] @relation("UserIdentityVerificationSession")
+  adminReviewBindingForUsers User[] @relation("UserAdminReviewSession")
+  adminReviewDecisions IdentityAdminReviewDecision[]
 
   @@unique([provider, providerSessionRef])
   @@index([userId, createdAt])

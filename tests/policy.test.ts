@@ -6,59 +6,55 @@ import {
   canInteractWithUser,
   hasFullAccountAccess,
 } from "../src/modules/policy/account-policy.js";
-
-const activeVerified = {
-  userId: "u1",
-  accountStatus: "ACTIVE" as const,
-  emailVerifiedAt: new Date(),
-  ageEligibilityStatus: "ELIGIBLE" as const,
-  suspendedAt: null,
-  deletedAt: null,
-};
+import { baseEligibleActor, mainAppActivatedActor } from "./helpers/activation-fixtures.js";
 
 describe("account policy stubs", () => {
   it("denies cross-user interaction (D-03)", () => {
-    expect(canInteractWithUser(activeVerified, "u2")).toBe(false);
+    expect(canInteractWithUser(mainAppActivatedActor(), "u2")).toBe(false);
   });
 
   it("allows own account access when pending verification", () => {
     expect(
       canAccessAccount(
-        { ...activeVerified, accountStatus: "PENDING_VERIFICATION", emailVerifiedAt: null },
-        "u1",
+        baseEligibleActor({
+          accountStatus: "PENDING_VERIFICATION",
+          emailVerifiedAt: null,
+        }),
+        baseEligibleActor().userId,
       ),
     ).toBe(true);
   });
 
   it("allows password change for pending verification (same as account read)", () => {
-    expect(
-      canChangePassword(
-        { ...activeVerified, accountStatus: "PENDING_VERIFICATION", emailVerifiedAt: null },
-        "u1",
-      ),
-    ).toBe(true);
-    expect(canChangePassword(activeVerified, "u2")).toBe(false);
+    const pending = baseEligibleActor({
+      accountStatus: "PENDING_VERIFICATION",
+      emailVerifiedAt: null,
+    });
+    expect(canChangePassword(pending, pending.userId)).toBe(true);
+    expect(canChangePassword(pending, "other-user")).toBe(false);
   });
 
   it("requires verification for profile edit", () => {
     expect(
       canEditProfile(
-        { ...activeVerified, accountStatus: "PENDING_VERIFICATION", emailVerifiedAt: null },
-        "u1",
+        baseEligibleActor({
+          accountStatus: "PENDING_VERIFICATION",
+          emailVerifiedAt: null,
+        }),
+        baseEligibleActor().userId,
       ),
     ).toBe(false);
-    expect(canEditProfile(activeVerified, "u1")).toBe(true);
+    expect(canEditProfile(baseEligibleActor(), baseEligibleActor().userId)).toBe(true);
   });
 
   it("denies profile edit when suspended", () => {
     expect(
       canEditProfile(
-        {
-          ...activeVerified,
+        baseEligibleActor({
           accountStatus: "SUSPENDED",
           suspendedAt: new Date(),
-        },
-        "u1",
+        }),
+        baseEligibleActor().userId,
       ),
     ).toBe(false);
   });
@@ -66,24 +62,25 @@ describe("account policy stubs", () => {
   it("denies access when accountStatus is SUSPENDED without suspendedAt timestamp", () => {
     expect(
       canAccessAccount(
-        {
-          ...activeVerified,
+        baseEligibleActor({
           accountStatus: "SUSPENDED",
           suspendedAt: null,
-        },
-        "u1",
+        }),
+        baseEligibleActor().userId,
       ),
     ).toBe(false);
   });
 
-  it("computes full access from separate trust dimensions", () => {
-    expect(hasFullAccountAccess(activeVerified)).toBe(true);
+  it("computes full access only with admin + provider KYC alignment", () => {
+    expect(hasFullAccountAccess(mainAppActivatedActor())).toBe(true);
+    expect(hasFullAccountAccess(baseEligibleActor())).toBe(false);
     expect(
-      hasFullAccountAccess({
-        ...activeVerified,
-        emailVerifiedAt: null,
-        accountStatus: "PENDING_VERIFICATION",
-      }),
+      hasFullAccountAccess(
+        baseEligibleActor({
+          accountStatus: "PENDING_VERIFICATION",
+          emailVerifiedAt: null,
+        }),
+      ),
     ).toBe(false);
   });
 });

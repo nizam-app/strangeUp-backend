@@ -1,0 +1,92 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Admin API (Task 022B — backend only)
+  version: 0.1.0
+  description: Identity review queue for future Admin Panel. Requires PlatformStaffGrant IDENTITY_REVIEWER.
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/admin/identity-reviews:
+    get:
+      summary: Paginated identity review queue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED], default: PENDING }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200": { description: Review list }
+        "403": { description: Not an identity reviewer }
+  /v1/admin/identity-reviews/{reviewId}:
+    get:
+      summary: Minimal review detail (reviewId = applicant userId)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: reviewId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Detail }
+        "404": { description: Not found }
+  /v1/admin/identity-reviews/{reviewId}/approve:
+    post:
+      summary: Approve activation for current provider-approved session
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+        - in: path
+          name: reviewId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Approved or idempotent replay }
+        "403": { description: Eligibility or authorization failure }
+        "409": { description: Concurrent or stale review state }
+  /v1/admin/identity-reviews/{reviewId}/reject:
+    post:
+      summary: Reject activation (bounded reason code)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+        - in: path
+          name: reviewId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              properties:
+                reasonCode:
+                  type: string
+                  enum:
+                    - POLICY_INELIGIBLE
+                    - IDENTITY_MISMATCH
+                    - INSUFFICIENT_EVIDENCE
+                    - FRAUD_SUSPECTED
+                    - OTHER_ADMIN_DECISION
+      responses:
+        "200": { description: Rejected }
+        "400": { description: Invalid reason }
+        "403": { description: Forbidden }
+        "409": { description: Conflict }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

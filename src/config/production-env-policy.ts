@@ -74,6 +74,24 @@ export function assertProductionEnvironmentSafe(env: AppEnv, jwtSecret: string):
     violations.push("KYC_PROVIDER=mock is not allowed in production");
   }
 
+  if (env.PUSH_ENABLED) {
+    violations.push(
+      "PUSH_ENABLED must remain false in production until Task 023D Firebase delivery is authorized",
+    );
+  }
+
+  if (env.SOCKET_IO_REDIS_ADAPTER_ENABLED) {
+    violations.push(
+      "SOCKET_IO_REDIS_ADAPTER_ENABLED must remain false until Redis adapter security review completes",
+    );
+  }
+
+  if (env.PLATFORM_IDENTITY_REVIEWER_USER_IDS?.trim()) {
+    violations.push(
+      "PLATFORM_IDENTITY_REVIEWER_USER_IDS must not be set in production; use controlled staff provisioning",
+    );
+  }
+
   for (const origin of env.corsOriginsList) {
     if (corsOriginIsLocalhost(origin)) {
       violations.push("CORS_ORIGINS must not include localhost in production");

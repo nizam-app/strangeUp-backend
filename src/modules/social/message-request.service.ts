@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import { isBlockedEitherDirection } from "../blocks/block-access.js";
+import { isBlockedEitherDirection, loadBlockedPeerIds } from "../blocks/block-access.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { decodeSocialCreatedCursor, encodeSocialCreatedCursor } from "./social-cursor.js";
 import {
@@ -120,6 +120,17 @@ export class MessageRequestService {
         : null;
 
     return { requests, nextCursor };
+  }
+
+  /** Pending inbox requests visible to the viewer (blocked senders excluded). */
+  async countPendingInbox(viewer: User): Promise<number> {
+    assertFullAccess(viewer);
+    const blockedPeers = await loadBlockedPeerIds(this.db, viewer.id);
+    const rows = await this.db.directMessageRequest.findMany({
+      where: { recipientId: viewer.id, status: "PENDING" },
+      select: { senderId: true },
+    });
+    return rows.filter((row) => !blockedPeers.has(row.senderId)).length;
   }
 
   async accept(viewer: User, requestId: string): Promise<MessageRequestDto> {

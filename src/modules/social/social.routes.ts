@@ -57,6 +57,9 @@ export function createMeSocialRouter(deps: {
   router.post("/message-requests/:requestId/decline", authenticate, (req, res, next) => {
     void controller.declineMessageRequest(req, res).catch(next);
   });
+  router.get("/messaging/summary", authenticate, (req, res, next) => {
+    void controller.getMessagingSummary(req, res).catch(next);
+  });
   router.get("/conversations", authenticate, (req, res, next) => {
     void controller.listConversations(req, res).catch(next);
   });

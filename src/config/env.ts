@@ -109,6 +109,50 @@ const envSchema = z
       .default(2_000),
     RESEND_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(10_000),
     RESEND_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+    /** Comma-separated user UUIDs granted IDENTITY_REVIEWER (non-production bootstrap only). */
+    PLATFORM_IDENTITY_REVIEWER_USER_IDS: z.string().optional(),
+    SOCKET_IO_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
+    SOCKET_IO_PATH: z.string().min(1).default("/socket.io"),
+    /** Multi-instance pub/sub adapter — disabled until dedicated Redis config is verified (do not reuse rate-limit Redis blindly). */
+    SOCKET_IO_REDIS_ADAPTER_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    SOCKET_IO_TYPING_MIN_INTERVAL_MS: z.coerce.number().int().min(500).max(10_000).default(2_000),
+    SOCKET_IO_TYPING_TTL_MS: z.coerce.number().int().min(1_000).max(30_000).default(5_000),
+    SOCKET_IO_ACCOUNT_RECHECK_INTERVAL_MS: z.coerce
+      .number()
+      .int()
+      .min(2_000)
+      .max(120_000)
+      .default(15_000),
+    /** Task 023C/023D — FCM delivery master switch (must stay false until 023D authorized). */
+    PUSH_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    PUSH_WORKER_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
+    PUSH_WORKER_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).default(5_000),
+    PUSH_WORKER_BATCH_SIZE: z.coerce.number().int().min(1).max(200).default(20),
+    PUSH_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+    PUSH_RETRY_BASE_MS: z.coerce.number().int().min(500).max(60_000).default(2_000),
+    PUSH_OUTBOX_LOCK_TTL_MS: z.coerce.number().int().min(10_000).max(600_000).default(120_000),
+    /** Skip FCM for notifications older than this (seconds). Prevents backlog flood when PUSH_ENABLED is turned on. 0 = no age limit. */
+    PUSH_MAX_NOTIFICATION_AGE_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(60 * 60 * 24 * 30)
+      .default(86_400),
+    /** Path to Firebase service account JSON (never commit; use secret mount in deployment). */
+    FIREBASE_CREDENTIALS_FILE: z.string().min(1).optional(),
+    FIREBASE_PROJECT_ID: z.string().min(1).optional(),
   })
   .strict();
 
@@ -179,6 +223,23 @@ const KNOWN_ENV_KEYS = [
   "RATE_LIMIT_REDIS_COMMAND_TIMEOUT_MS",
   "RESEND_REQUEST_TIMEOUT_MS",
   "RESEND_MAX_RETRIES",
+  "PLATFORM_IDENTITY_REVIEWER_USER_IDS",
+  "SOCKET_IO_ENABLED",
+  "SOCKET_IO_PATH",
+  "SOCKET_IO_REDIS_ADAPTER_ENABLED",
+  "SOCKET_IO_TYPING_MIN_INTERVAL_MS",
+  "SOCKET_IO_TYPING_TTL_MS",
+  "SOCKET_IO_ACCOUNT_RECHECK_INTERVAL_MS",
+  "PUSH_ENABLED",
+  "PUSH_WORKER_ENABLED",
+  "PUSH_WORKER_INTERVAL_MS",
+  "PUSH_WORKER_BATCH_SIZE",
+  "PUSH_MAX_ATTEMPTS",
+  "PUSH_RETRY_BASE_MS",
+  "PUSH_OUTBOX_LOCK_TTL_MS",
+  "PUSH_MAX_NOTIFICATION_AGE_SECONDS",
+  "FIREBASE_CREDENTIALS_FILE",
+  "FIREBASE_PROJECT_ID",
 ] as const;
 
 export type TransactionalEmailConfig = {

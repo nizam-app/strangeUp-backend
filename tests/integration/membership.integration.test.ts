@@ -8,45 +8,20 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
-import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
+import { createIntegrationUser } from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
 
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
-
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
+  db: DatabaseClient,
   prefix: string,
 ): Promise<{ accessToken: string; userId: string }> {
-  const email = `${prefix}-${Date.now()}@example.com`;
-  const register = await request(app).post("/v1/auth/register").send({
-    firstName: "Mem",
-    lastName: "Ber",
-    email,
-    password: "ValidPass1",
-    dateOfBirth: "1995-06-15",
-    consents: defaultConsents,
-  });
-  expect(register.status).toBe(201);
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  expect(token).toBeTruthy();
-  const confirm = await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  expect(confirm.status).toBe(200);
-  const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-  expect(login.status).toBe(200);
-  return {
-    accessToken: login.body.data.accessToken as string,
-    userId: login.body.data.user.id as string,
-  };
+  const user = await createIntegrationUser(app, emailSender, db, prefix);
+  return { accessToken: user.accessToken, userId: user.userId };
 }
 
 const describeMembership = runIntegration ? describe : describe.skip;
@@ -91,7 +66,7 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
     const unauth = await request(app).get("/v1/membership/plans");
     expect(unauth.status).toBe(401);
 
-    const user = await verifiedUser(app, emailSender, "t017-plans");
+    const user = await verifiedUser(app, emailSender, db, "t017-plans");
     const res = await request(app)
       .get("/v1/membership/plans")
       .set("Authorization", `Bearer ${user.accessToken}`);
@@ -104,7 +79,7 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
   });
 
   it("T017-M02 self membership is BASIC with no upgrade path", async () => {
-    const user = await verifiedUser(app, emailSender, "t017-self");
+    const user = await verifiedUser(app, emailSender, db, "t017-self");
     const res = await request(app)
       .get("/v1/me/membership")
       .set("Authorization", `Bearer ${user.accessToken}`);
@@ -116,7 +91,7 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
   });
 
   it("T017-M03 settings overview includes membership summary", async () => {
-    const user = await verifiedUser(app, emailSender, "t017-settings");
+    const user = await verifiedUser(app, emailSender, db, "t017-settings");
     const res = await request(app)
       .get("/v1/me/settings/overview")
       .set("Authorization", `Bearer ${user.accessToken}`);
@@ -128,7 +103,7 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
   });
 
   it("T017-M04 no subscription purchase routes exposed", async () => {
-    const user = await verifiedUser(app, emailSender, "t017-no-pay");
+    const user = await verifiedUser(app, emailSender, db, "t017-no-pay");
     const paths = [
       "/v1/membership/subscribe",
       "/v1/me/membership/upgrade",
@@ -144,8 +119,8 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
   });
 
   it("T017-M05 cross-user isolation — only self membership readable", async () => {
-    const a = await verifiedUser(app, emailSender, "t017-a");
-    const b = await verifiedUser(app, emailSender, "t017-b");
+    const a = await verifiedUser(app, emailSender, db, "t017-a");
+    const b = await verifiedUser(app, emailSender, db, "t017-b");
     const resA = await request(app)
       .get("/v1/me/membership")
       .set("Authorization", `Bearer ${a.accessToken}`);

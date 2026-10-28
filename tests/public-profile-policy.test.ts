@@ -6,9 +6,10 @@ import {
   hasTrustedGovernmentIdKycApproved,
   isEligiblePublicProfileTarget,
 } from "../src/modules/policy/public-profile-policy.js";
+import { baseEligibleActor, mainAppActivatedActor } from "./helpers/activation-fixtures.js";
 
 const eligible = {
-  userId: "11111111-1111-4111-8111-111111111111",
+  userId: baseEligibleActor().userId,
   accountStatus: "ACTIVE" as const,
   emailVerifiedAt: new Date(),
   ageEligibilityStatus: "ELIGIBLE" as const,
@@ -20,6 +21,22 @@ const eligible = {
   identityVerificationRevokedAt: null,
 };
 
+const activatedViewer = {
+  userId: mainAppActivatedActor().userId,
+  accountStatus: "ACTIVE" as const,
+  emailVerifiedAt: new Date(),
+  ageEligibilityStatus: "ELIGIBLE" as const,
+  suspendedAt: null,
+  deletedAt: null,
+  identityVerificationStatus: "APPROVED" as const,
+  identityVerificationApprovedAt: new Date(),
+  identityVerificationValidUntil: null,
+  identityVerificationRevokedAt: null,
+  identityVerificationSessionId: mainAppActivatedActor().identityVerificationSessionId,
+  adminReviewStatus: "APPROVED" as const,
+  adminReviewVerificationSessionId: mainAppActivatedActor().adminReviewVerificationSessionId,
+};
+
 const kycApproved = {
   ...eligible,
   identityVerificationStatus: "APPROVED" as const,
@@ -29,25 +46,15 @@ const kycApproved = {
 describe("public profile policy (D-03/D-04)", () => {
   it("requires full account access to browse", () => {
     expect(
-      canBrowseDiscovery({
-        userId: eligible.userId,
-        accountStatus: "PENDING_VERIFICATION",
-        emailVerifiedAt: null,
-        ageEligibilityStatus: "ELIGIBLE",
-        suspendedAt: null,
-        deletedAt: null,
-      }),
+      canBrowseDiscovery(
+        baseEligibleActor({
+          accountStatus: "PENDING_VERIFICATION",
+          emailVerifiedAt: null,
+        }),
+      ),
     ).toBe(false);
-    expect(
-      canBrowseDiscovery({
-        userId: eligible.userId,
-        accountStatus: "ACTIVE",
-        emailVerifiedAt: new Date(),
-        ageEligibilityStatus: "ELIGIBLE",
-        suspendedAt: null,
-        deletedAt: null,
-      }),
-    ).toBe(true);
+    expect(canBrowseDiscovery(baseEligibleActor())).toBe(false);
+    expect(canBrowseDiscovery(mainAppActivatedActor())).toBe(true);
   });
 
   it("treats ONLY identityVerificationStatus APPROVED as trusted KYC", () => {
@@ -61,6 +68,11 @@ describe("public profile policy (D-03/D-04)", () => {
     expect(canViewTargetVisibility(eligible, "EVERYONE")).toBe(true);
     expect(canViewTargetVisibility(eligible, "VERIFIED_USERS_ONLY")).toBe(false);
     expect(canViewTargetVisibility(kycApproved, "VERIFIED_USERS_ONLY")).toBe(true);
+  });
+
+  it("requires activated viewer to browse another user's public profile", () => {
+    expect(canViewPublicProfile(eligible, eligible, "EVERYONE", false)).toBe(false);
+    expect(canViewPublicProfile(activatedViewer, eligible, "EVERYONE", false)).toBe(true);
   });
 
   it("denies blocked relationships and ineligible targets", () => {
@@ -83,7 +95,7 @@ describe("public profile policy (D-03/D-04)", () => {
     ).toBe(false);
     expect(
       canViewPublicProfile(
-        kycApproved,
+        activatedViewer,
         { ...eligible, userId: "22222222-2222-4222-8222-222222222222" },
         "VERIFIED_USERS_ONLY",
         false,

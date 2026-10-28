@@ -112,6 +112,8 @@ Trust (read-only from server):
 | 400 | `VALIDATION_ERROR` / `AUTH_CHALLENGE_EXPIRED` | Show safe message |
 | 401 | `AUTH_UNAUTHORIZED` / `AUTH_INVALID_CREDENTIALS` | Refresh or re-login |
 | 403 | `AUTH_FORBIDDEN` | Restricted / suspended account |
+| 403 | `ONBOARDING_REQUIRED` | Pending onboarding — use `error.nextAction`, `onboardingPhase`, `homeAccessAllowed: false`; call `GET /v1/me/onboarding/status` |
+| 403 | `ACCOUNT_NOT_ACTIVATED` | Admin rejected or activation denied — do not route to Home; show remediation from `nextAction` |
 | 404 | `NOT_FOUND` | Generic message |
 | 409 | `CONFLICT` | Email taken / idempotency misuse |
 | 429 | `AUTH_RATE_LIMITED` | Backoff |
@@ -255,9 +257,34 @@ await http.post(
 
 ## 9. Self account & profile (LIVE)
 
+### `GET /v1/me/onboarding/status` (Task 022A — auth flow routing)
+
+Call after **every login** and on Screen 07 / post-register navigation. This is the **authoritative** activation router for Flutter (not SDK `done`, not provider decision alone).
+
+**Response highlights:** `homeAccessAllowed`, `onboardingPhase`, `effectiveApplicationAccess`, `nextAction`, `canStartVerification`, `canRetry`, `adminReviewStatus`, `identityVerificationStatus`, `emailVerificationStatus`, `verificationStepHint`, `limitations[]`.
+
+**`onboardingPhase` (stable):** `AWAITING_EMAIL_VERIFICATION`, `READY_FOR_IDENTITY_VERIFICATION`, `IDENTITY_VERIFICATION_IN_PROGRESS`, `IDENTITY_RESUBMISSION_REQUIRED`, `AWAITING_PROVIDER_DECISION`, `PROVIDER_DECLINED_OR_EXPIRED`, `AWAITING_ADMIN_REVIEW`, `ADMIN_REJECTED`, `FULLY_ACTIVATED`.
+
+**`nextAction` values:** `VERIFY_EMAIL`, `START_IDENTITY_VERIFICATION`, `CONTINUE_IDENTITY_VERIFICATION`, `WAIT_FOR_PROVIDER_DECISION`, `WAIT_FOR_ADMIN_REVIEW`, `ADMIN_REJECTED`, `RETRY_IDENTITY_VERIFICATION`, `HOME_READY`, `CONTACT_SUPPORT`, `ACCOUNT_SUSPENDED`.
+
+**Register → IDV:** `POST /v1/auth/register` does **not** return tokens. After register, route to login (or email verify) then call this endpoint before any Home navigation. `user.fullAccess` on login remains `false` until provider KYC **and** StrangeUp admin approval (see ADR-005).
+
+**Figma auth ZIP parity (Task 022D):** Screen-by-screen classification (MATCHED / PARTIAL / DEFERRED / FLUTTER-ONLY) — `docs/product/FIGMA_AUTH_FLOW_PARITY_TASK022.md`. Government ID + selfie capture are **Veriff SDK only** (no backend upload). Apple/Google login buttons are **DEFERRED** (no OAuth routes). Email verification and admin-waiting UI were **not** in the supplied ZIP; use onboarding API states. Home destination UI after approval is **owner-supplied later**; backend gate is `homeAccessAllowed` + `GET /v1/home`.
+
+```dart
+final onboarding = await http.get(
+  Uri.parse('$baseUrl/v1/me/onboarding/status'),
+  headers: {'Authorization': 'Bearer $accessToken'},
+);
+final data = jsonDecode(onboarding.body)['data'];
+if (data['homeAccessAllowed'] != true) {
+  // route by data['nextAction'] — never open Home/Dashboard
+}
+```
+
 ### `GET /v1/me/account`
 
-Call after login (including **pending verification**) so settings/onboarding screens can show `accountStatus`, trust dimensions, and consent versions recorded at signup.
+Call after login (including **pending verification**) so settings/onboarding screens can show `accountStatus`, trust dimensions, and consent versions recorded at signup. Prefer **`/v1/me/onboarding/status`** for Screen 07 step UX; use account for settings/consent audit display.
 
 ```dart
 final res = await http.get(
@@ -265,10 +292,10 @@ final res = await http.get(
   headers: {'Authorization': 'Bearer $accessToken'},
 );
 final account = jsonDecode(res.body)['data'];
-final fullAccess = account['fullAccess'] as bool;
+final fullAccess = account['fullAccess'] as bool; // false until admin + provider KYC (ADR-005)
 ```
 
-Pending users: **can** read account; **cannot** PATCH profile until `emailVerified` and age eligible (`403`).
+Pending users: **can** read account and onboarding status; **cannot** PATCH profile until `emailVerified` and age eligible (`403`). **`fullAccess` false** does not block IDV session start once email is verified.
 
 ### `GET` / `PATCH /v1/me/profile`
 
@@ -351,7 +378,7 @@ await http.put(
 
 ### 10. Discovery & public profiles (Task 009 — D-03/D-04 MVP)
 
-**Prerequisites:** User must be logged in with `fullAccess` (`GET /v1/me/account`). Pending/unverified users get `403` on discovery routes.
+**Prerequisites (Task 022C):** Main-app routes (discovery, `/v1/users/*`, activities, groups, home, store, jobs, membership, and gated `/v1/me/*` product routes) require **`homeAccessAllowed: true`** (trusted provider KYC + StrangeUp admin approval on the same session). Pending users receive **`403 ONBOARDING_REQUIRED`** with `nextAction` — not a generic crash. Onboarding-safe APIs remain available: auth, `GET /v1/me/onboarding/status`, `/v1/me/verification/*`, account/profile read, password change, session inventory/revoke, deletion impact, and interest **catalog** `GET /v1/interests`.
 
 1. **People list (`Screen 09`):** `GET /v1/discover/people?limit=20&cursor=...` optional `q`, `city`, `region`, `interest` (catalog slug). Response `data.people[]` preview objects; paginate with `meta.nextCursor`.
 2. **Public profile (`Screen 10`):** `GET /v1/users/{userId}` — use only returned fields; **no** email, DOB, KYC, or visibility enum.
@@ -557,7 +584,18 @@ final activities = jsonDecode(list.body)['data']['activities'] as List;
 4. **Chat list:** `GET /v1/me/conversations` — `unreadCount`, last-message preview, optional `q`.
 5. **Read:** `POST /v1/me/conversations/{id}/read` — server watermark only, not delivery.
 6. **Errors:** hidden/blocked → generic `404`. Declined request retry → `409`. Mutual follow does **not** skip the request.
-7. **`FOLLOWERS_ONLY` activities** still cannot be published.
+7. **Header / Screen 16 badges (Task 023A):** `GET /v1/me/messaging/summary` — one poll-friendly call for message-tab badges. Use `displayBadgeCount` (or `totalUnreadMessages`) for the **Recent** messages aggregate; use `messageRequestsPending` for the **Requests** tab only. Do **not** add requests or `notificationsUnreadCount` into the messages badge. Requires the same Task 022 main-app gate as other `/v1/me` product routes.
+8. **`FOLLOWERS_ONLY` activities** still cannot be published.
+
+```dart
+final summary = await http.get(
+  Uri.parse('$baseUrl/v1/me/messaging/summary'),
+  headers: {'Authorization': 'Bearer $accessToken'},
+);
+final s = jsonDecode(summary.body)['data'] as Map<String, dynamic>;
+final messagesBadge = s['displayBadgeCount'] as int;
+final requestsBadge = s['messageRequestsPending'] as int;
+```
 
 ```dart
 final req = await http.post(
@@ -569,6 +607,126 @@ final req = await http.post(
   body: jsonEncode({'targetUserId': otherUserId}),
 );
 ```
+
+---
+
+## 14.5 Messaging realtime — Socket.IO (Task 023B)
+
+**Status:** Implemented in source; bounded integration tests on Neon `strangeup_test`. **REST remains authoritative** for send/history/read/idempotency. Socket events are notifications of **already persisted** rows only.
+
+**Connect:** Same host as REST, path `SOCKET_IO_PATH` (default `/socket.io`). Handshake auth:
+
+```dart
+IO.io(baseUrl, IO.OptionBuilder()
+  .setTransports(['websocket'])
+  .setAuth({'token': accessToken})
+  .build());
+```
+
+**Gate:** Valid non-revoked access JWT + Task 022 main-app activation (pending onboarding → connection rejected). Re-validates session on subscribe/typing; logout/revocation → `messaging:error` + disconnect.
+
+**Client → server**
+
+| Event | Payload | Notes |
+|-------|---------|--------|
+| `messaging:subscribe_dm` | `{ "conversationId": "<uuid>" }` | Accepted participant only; blocks → error |
+| `messaging:unsubscribe_dm` | `{ "conversationId": "<uuid>" }` | Leave room |
+| `messaging:subscribe_group` | `{ "groupId": "<uuid>" }` | ACTIVE member only |
+| `messaging:unsubscribe_group` | `{ "groupId": "<uuid>" }` | Leave room |
+| `messaging:typing` | `{ "target": "dm"\|"group", "id": "<uuid>", "active": true\|false }` | Ephemeral; throttled; **not** presence/online |
+
+**Server → client**
+
+| Event | Payload | Notes |
+|-------|---------|--------|
+| `messaging:connected` | `{ userId, serverTime, syncHint }` | Auto-joins private `user:{userId}` room for summary pushes |
+| `messaging:subscribed` / `messaging:unsubscribed` | `{ kind, id }` | Ack |
+| `messaging:error` | `{ code, message }` | Includes `NOT_FOUND`, `VALIDATION_ERROR`, `AUTH_UNAUTHORIZED` |
+| `messaging:dm_message` | `{ eventId, message, clientMessageId? }` | After REST `POST .../conversations/.../messages` commit; dedupe by `eventId`/`messageId` |
+| `messaging:group_message` | `{ eventId, message, clientMessageId? }` | After REST group chat send |
+| `messaging:dm_read` | `{ eventId, conversationId, readerUserId, unreadCount }` | After REST read watermark |
+| `messaging:group_read` | `{ eventId, groupId, readerUserId, unreadCount }` | After REST group read |
+| `messaging:summary` | `{ eventId, summary }` | Same fields as `GET /v1/me/messaging/summary` |
+| `messaging:typing` | `{ eventId, target, id, userId, active }` | Other participants in subscribed room only |
+
+**Reconnect:** On reconnect, resubscribe to open threads, refetch REST message pages + `GET /v1/me/messaging/summary`. Do not infer delivery/read receipts beyond REST watermarks.
+
+**Delivery security (post-023B hardening):** Message/read/summary events are emitted to **per-user rooms** after live ACL checks. Block, group leave, and session revocation evict affected sockets/rooms so passive listeners do not receive new events.
+
+**Do not ship:** online/active circles, E2EE claims, typing as “user is online”. Multi-instance horizontal scale requires a **dedicated** Redis adapter config (`SOCKET_IO_REDIS_ADAPTER_ENABLED` is **false** by default; enabling it without adapter wiring **fails server startup**; rate-limit Redis is **not** reused automatically).
+
+OpenAPI reference: `openapi/messaging-realtime.yaml`.
+
+---
+
+## 14.6 Push device registration & preferences (Task 023C)
+
+**Status:** Registration/preferences **LIVE**; server-side delivery infrastructure (Task 023D) is implemented with **`PUSH_ENABLED=false` by default** — production still performs **no live FCM** until owner authorization.
+
+**Gate:** Task 022 main-app activation (same as other gated `/v1/me/*` routes).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/me/device-tokens` | Register/rotate FCM token for **current user** |
+| `GET` | `/v1/me/device-tokens` | List active devices (metadata only — **never** returns `registrationToken`) |
+| `DELETE` | `/v1/me/device-tokens/{deviceTokenId}` | Revoke own device |
+| `GET` | `/v1/me/notification-preferences` | Read toggles + `deliveryStatus` (`PUSH_DISABLED` \| `PUSH_ENABLED`) |
+| `PATCH` | `/v1/me/notification-preferences` | Partial update (at least one field) |
+
+**Register body:** `{ "platform": "android"|"ios", "registrationToken": "<fcm token>", "deviceBindingId": "<stable device id>" }`  
+**Response:** `{ deviceTokenId, platform, deviceBindingId, lastSeenAt, registeredAt }`
+
+**Preference defaults (server):** `pushEnabled`, `directMessagesEnabled`, `messageRequestsEnabled`, `groupMembershipEnabled`, `activityUpdatesEnabled` → **true**; `groupChatEnabled` → **false** (avoid group-chat push spam until product opts in); `marketingEnabled` → **false**.
+
+**Lifecycle:** `POST /v1/auth/logout` revokes tokens bound to the current session; `POST /v1/auth/logout-all` revokes all user tokens and disconnects sockets. Re-register after login on each device.
+
+```dart
+await http.post(
+  Uri.parse('$baseUrl/v1/me/device-tokens'),
+  headers: {
+    'Authorization': 'Bearer $accessToken',
+    'Content-Type': 'application/json',
+  },
+  body: jsonEncode({
+    'platform': 'android',
+    'registrationToken': fcmToken,
+    'deviceBindingId': stableDeviceId,
+  }),
+);
+```
+
+OpenAPI: `openapi/push-devices.yaml`.
+
+---
+
+## 14.7 Push delivery contract (Task 023D)
+
+**Backend behavior (Flutter responsibilities marked):**
+
+| Topic | Contract |
+|--------|----------|
+| Master switch | `PUSH_ENABLED=false` → outbox rows are marked **`SKIPPED`** (`PUSH_DISABLED`); **no FCM HTTP** from this API process. |
+| Source of truth | Only **persisted** `UserNotification` rows enqueue outbox work (no synthetic billing/meetup/identity-complete pushes). |
+| Payload | FCM **data** keys: `notificationId`, `type`, optional opaque `sourceId`. Display title/body are **generic** per type — **never** DM text, KYC, or tokens. Resolve details via authenticated `GET /v1/me/notifications` (and existing domain APIs). |
+| Preferences | Honored at send time (`pushEnabled` + per-category toggles). `groupChatEnabled` default **false**. |
+| Gates | Task 022 home access, non-suspended account, active session for session-bound device tokens. |
+| Invalid token | Server revokes `UserDeviceToken`; client should re-register after login. |
+| Worker | In-process interval (`PUSH_WORKER_*` env). Multi-instance safe via Postgres `FOR UPDATE SKIP LOCKED`. |
+| Firebase setup | **Flutter** configures Firebase SDK on device; backend uses `firebase-admin` + `FIREBASE_CREDENTIALS_FILE` (never embed JSON in app or commit secrets). |
+
+**Client handling:**
+
+```dart
+// On FCM data message (foreground/background handler):
+final notificationId = message.data['notificationId'];
+final type = message.data['type'];
+// Fetch authoritative notification + navigation target via REST with current session.
+await notificationsRepository.syncAndOpen(notificationId: notificationId, type: type);
+```
+
+Do **not** parse private message previews from push payloads. Treat push as a **wake/signal** only.
+
+Operational notes: `docs/operations/PUSH_DELIVERY_TASK023D.md`.
 
 ---
 
@@ -585,7 +743,7 @@ final req = await http.post(
 5. **Manage (`Screen 2`):** `GET /v1/me/groups/{id}/manage`, approve/decline `.../join-requests/{membershipId}/...`. `memberCount` is ACTIVE rows only.
 6. **Details (`Screen 15`):** `GET /v1/groups/{id}` is a summary. Posts, members, comments, likes, and chat require `canAccessContent: true`. Use generic `404` for unauthorized content — do not infer that the group is missing.
 7. **Posts:** text `{ "body" }`. Optional `activityId` after attach. Task 016 photo/poll fields exist on post DTOs but stay **`photo: null`, `poll: null`** until server enables interactive media (see §18).
-8. **Chat:** `GET /v1/me/group-chats` for Screen 16 group-thread previews. Send via `POST /v1/groups/{id}/chat/messages`. This is **not** `/v1/me/conversations`. No E2EE, typing, or online count.
+8. **Chat:** `GET /v1/me/group-chats` for Screen 16 group-thread previews. Send via `POST /v1/groups/{id}/chat/messages`. This is **not** `/v1/me/conversations`. Optional ephemeral typing via Socket.IO §14.5. No E2EE or online/presence counts.
 9. **Meetups:** `GET /v1/groups/{id}/activities` lists real Task 010 cards. Joining a group does **not** RSVP. Real-world activity publish/confirm still needs Task 010 KYC.
 10. **Never render:** `verified`, `verifiedCommunity`, distance, or invented member counts.
 
@@ -690,6 +848,20 @@ assert(checkout['status'] == 'UNAVAILABLE');
 5. **KYC unchanged:** Activity/group gates still use `identityVerificationStatus`, not membership.
 
 See Screen 18 binding bullets under §9 settings hub (item 8).
+
+---
+
+## 14.8 Task 023 Header Flow — release blockers (023E)
+
+**Parity matrix:** `docs/product/FIGMA_HEADER_FLOW_PARITY_TASK023.md`.
+
+Do **not** ship production Header messaging/notifications push claims until:
+
+1. Owner enables **`PUSH_ENABLED`** and Firebase credentials (backend still fail-closed in production until authorized).  
+2. **Full Neon regression** and security review complete (023E ran **focused** integration only).  
+3. **Socket.IO Redis adapter** if you need multi-instance realtime (default single-node).  
+4. **Staff suspend/deactivate API** is product-approved and calls backend side effects (hook: `applyAccountRestrictionSideEffects`; periodic socket recheck covers DB-only suspension in tests).  
+5. Deferred Figma items stay hidden: meetup invitation cards, owner group invites, verified group badge, miles/GPS, E2EE, chat photos, presence, billing/membership push cards.
 
 ---
 

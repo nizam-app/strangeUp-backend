@@ -11,54 +11,22 @@ import {
 import {
   createCapturingEmailSender,
   extractEmailChangeTokenFromText,
-  extractVerificationTokenFromText,
 } from "../helpers/capturing-email-sender.js";
+import { createIntegrationUser } from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
-
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
 
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
   db: DatabaseClient,
   prefix: string,
-  options?: { kyc?: "APPROVED" | "PENDING" | "REJECTED" | "NOT_STARTED" },
+  options?: { mainAppAccess?: boolean },
 ): Promise<{ accessToken: string; userId: string; email: string; refreshToken: string }> {
-  const email = `${prefix}-${Date.now()}@example.com`;
-  const register = await request(app).post("/v1/auth/register").send({
-    firstName: "Set",
-    lastName: "User",
-    email,
-    password: "ValidPass1",
-    dateOfBirth: "1995-06-15",
-    consents: defaultConsents,
+  return createIntegrationUser(app, emailSender, db, prefix, {
+    mainAppAccess: options?.mainAppAccess,
   });
-  expect(register.status).toBe(201);
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  expect(token).toBeTruthy();
-  const confirm = await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  expect(confirm.status).toBe(200);
-  const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-  expect(login.status).toBe(200);
-  const userId = login.body.data.user.id as string;
-  if (options?.kyc && options.kyc !== "NOT_STARTED") {
-    await db.user.update({
-      where: { id: userId },
-      data: { identityVerificationStatus: options.kyc },
-    });
-  }
-  return {
-    accessToken: login.body.data.accessToken as string,
-    refreshToken: login.body.data.refreshToken as string,
-    userId,
-    email,
-  };
 }
 
 function futureWindow(hoursFromNow = 48): { startsAt: string; endsAt: string } {
@@ -148,7 +116,7 @@ describeSettings("integration: settings & saved activities (Task 015)", () => {
   });
 
   it("T015-P02 saved activity is distinct from RSVP and omits meeting instructions", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t015-host", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t015-host");
     const viewer = await verifiedUser(app, emailSender, db, "t015-viewer");
     const activityId = await publishActivity(app, host.accessToken);
 
@@ -169,17 +137,18 @@ describeSettings("integration: settings & saved activities (Task 015)", () => {
     const rsvp = await request(app)
       .post(`/v1/activities/${activityId}/rsvp`)
       .set("Authorization", `Bearer ${viewer.accessToken}`);
-    expect(rsvp.status).toBe(403);
+    expect(rsvp.status).toBe(200);
+    expect(rsvp.body.data.state).toBe("CONFIRMED");
 
     const overview = await request(app)
       .get("/v1/me/settings/overview")
       .set("Authorization", `Bearer ${viewer.accessToken}`);
     expect(overview.body.data.counts.savedActivities).toBe(1);
-    expect(overview.body.data.counts.confirmedUpcomingRsvps).toBe(0);
+    expect(overview.body.data.counts.confirmedUpcomingRsvps).toBe(1);
   });
 
   it("T015-P03 blocked host saved activity hidden from list", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t015-block-host", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t015-block-host");
     const viewer = await verifiedUser(app, emailSender, db, "t015-block-viewer");
     const activityId = await publishActivity(app, host.accessToken);
 
@@ -240,7 +209,7 @@ describeSettings("integration: settings & saved activities (Task 015)", () => {
   });
 
   it("T015-P05 session inventory and per-session revoke", async () => {
-    const user = await verifiedUser(app, emailSender, db, "t015-sessions");
+    const user = await verifiedUser(app, emailSender, db, "t015-sessions", { mainAppAccess: false });
     await request(app).post("/v1/auth/login").send({ email: user.email, password: "ValidPass1" });
 
     const list = await request(app)
@@ -259,7 +228,9 @@ describeSettings("integration: settings & saved activities (Task 015)", () => {
   });
 
   it("T015-P06 account deletion impact is non-destructive", async () => {
-    const user = await verifiedUser(app, emailSender, db, "t015-delete-impact");
+    const user = await verifiedUser(app, emailSender, db, "t015-delete-impact", {
+      mainAppAccess: false,
+    });
     const res = await request(app)
       .get("/v1/me/account-deletion/impact")
       .set("Authorization", `Bearer ${user.accessToken}`);
@@ -269,8 +240,8 @@ describeSettings("integration: settings & saved activities (Task 015)", () => {
   });
 
   it("T015-N01 cross-user session revoke is idempotent no-op", async () => {
-    const a = await verifiedUser(app, emailSender, db, "t015-sess-a");
-    const b = await verifiedUser(app, emailSender, db, "t015-sess-b");
+    const a = await verifiedUser(app, emailSender, db, "t015-sess-a", { mainAppAccess: false });
+    const b = await verifiedUser(app, emailSender, db, "t015-sess-b", { mainAppAccess: false });
     const listA = await request(app)
       .get("/v1/me/security/sessions")
       .set("Authorization", `Bearer ${a.accessToken}`);

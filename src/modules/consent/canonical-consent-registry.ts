@@ -276,6 +276,54 @@ export function validateRegistrationConsents(
   return { ok: true, normalized };
 }
 
+export type StoredConsentRecord = {
+  consentType: ConsentType;
+  documentId: string | null;
+  documentVersion: string;
+};
+
+/** Whether persisted registration consents satisfy the current canonical registry. */
+export function userRegistrationConsentsSatisfyRegistry(
+  records: StoredConsentRecord[],
+  ctx: ConsentRegistryContext,
+):
+  | { ok: true }
+  | { ok: false; code: "CONSENT_MISSING" | "CONSENT_VERSION_INVALID" | "CONSENT_VERSION_UNAVAILABLE"; message: string } {
+  const requirements = listRegistrationRequirements(ctx);
+  for (const req of requirements) {
+    if (req.availability === "UNAVAILABLE" || !req.activeVersionId || !req.consentType) {
+      return {
+        ok: false,
+        code: "CONSENT_VERSION_UNAVAILABLE",
+        message: `Required consent ${req.documentId} is not available for enforcement`,
+      };
+    }
+    const match = records.find((r) => r.consentType === req.consentType);
+    if (!match) {
+      return {
+        ok: false,
+        code: "CONSENT_MISSING",
+        message: `Missing required consent record: ${req.consentType}`,
+      };
+    }
+    if (match.documentVersion !== req.activeVersionId) {
+      return {
+        ok: false,
+        code: "CONSENT_VERSION_INVALID",
+        message: `Consent ${req.consentType} version is not current`,
+      };
+    }
+    if (req.documentId && match.documentId && match.documentId !== req.documentId) {
+      return {
+        ok: false,
+        code: "CONSENT_VERSION_INVALID",
+        message: `Consent ${req.consentType} documentId mismatch`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
 export function validateJobApplicationConsentVersion(
   version: string,
   ctx: ConsentRegistryContext,

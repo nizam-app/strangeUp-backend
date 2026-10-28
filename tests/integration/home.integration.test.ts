@@ -8,56 +8,26 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
-import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
+import { createIntegrationUser } from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
-
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
 
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
   db: DatabaseClient,
   prefix: string,
-  options?: { kyc?: "APPROVED"; visibility?: "EVERYONE" | "VERIFIED_USERS_ONLY" },
+  options?: {
+    visibility?: "EVERYONE" | "VERIFIED_USERS_ONLY";
+    mainAppAccess?: boolean;
+  },
 ): Promise<{ accessToken: string; userId: string; email: string }> {
-  const email = `${prefix}-${Date.now()}@example.com`;
-  const register = await request(app).post("/v1/auth/register").send({
-    firstName: "Home",
-    lastName: "User",
-    email,
-    password: "ValidPass1",
-    dateOfBirth: "1995-06-15",
-    consents: defaultConsents,
+  return createIntegrationUser(app, emailSender, db, prefix, {
+    profileVisibility: options?.visibility,
+    mainAppAccess: options?.mainAppAccess,
   });
-  expect(register.status).toBe(201);
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  const confirm = await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  expect(confirm.status).toBe(200);
-  const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-  expect(login.status).toBe(200);
-  const userId = login.body.data.user.id as string;
-  if (options?.visibility) {
-    await db.profile.update({
-      where: { userId },
-      data: { profileVisibility: options.visibility },
-    });
-  }
-  if (options?.kyc === "APPROVED") {
-    await db.user.update({
-      where: { id: userId },
-      data: { identityVerificationStatus: "APPROVED" },
-    });
-  }
-  return { accessToken: login.body.data.accessToken as string, userId, email };
 }
 
 const describeHome = runIntegration ? describe : describe.skip;

@@ -11,7 +11,9 @@ export type AppErrorCode =
   | "CONFLICT"
   | "IDENTITY_VERIFICATION_REQUIRED"
   | "FEATURE_DISABLED"
-  | "EMAIL_TRANSPORT_UNAVAILABLE";
+  | "EMAIL_TRANSPORT_UNAVAILABLE"
+  | "ONBOARDING_REQUIRED"
+  | "ACCOUNT_NOT_ACTIVATED";
 
 export class AppError extends Error {
   readonly code: AppErrorCode;

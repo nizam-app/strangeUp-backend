@@ -8,51 +8,22 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
-import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
+import { createIntegrationUser } from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
-
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
 
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
   db: DatabaseClient,
   prefix: string,
-  options?: { kyc?: "APPROVED" | "PENDING" | "REJECTED" | "NOT_STARTED" },
+  options?: { mainAppAccess?: boolean },
 ): Promise<{ accessToken: string; userId: string; email: string }> {
-  const email = `${prefix}-${Date.now()}@example.com`;
-  const register = await request(app).post("/v1/auth/register").send({
-    firstName: "Act",
-    lastName: "User",
-    email,
-    password: "ValidPass1",
-    dateOfBirth: "1995-06-15",
-    consents: defaultConsents,
+  return createIntegrationUser(app, emailSender, db, prefix, {
+    mainAppAccess: options?.mainAppAccess,
   });
-  expect(register.status).toBe(201);
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  expect(token).toBeTruthy();
-  const confirm = await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  expect(confirm.status).toBe(200);
-  const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-  expect(login.status).toBe(200);
-  const userId = login.body.data.user.id as string;
-  if (options?.kyc && options.kyc !== "NOT_STARTED") {
-    await db.user.update({
-      where: { id: userId },
-      data: { identityVerificationStatus: options.kyc },
-    });
-  }
-  return { accessToken: login.body.data.accessToken as string, userId, email };
 }
 
 function futureWindow(hoursFromNow = 48): { startsAt: string; endsAt: string } {
@@ -125,7 +96,7 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
   });
 
   it("T010-P01 eligible viewer browses published activities without KYC; drafts stay hidden", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t010-host", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t010-host");
     const viewer = await verifiedUser(app, emailSender, db, "t010-viewer");
     const draft = await createDraft(app, host.accessToken);
     expect(draft.status).toBe(201);
@@ -161,7 +132,7 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
   });
 
   it("T010-N01 unauthorized and other-user host mutations are rejected", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t010-owner", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t010-owner");
     const other = await verifiedUser(app, emailSender, db, "t010-other");
     const created = await createDraft(app, host.accessToken);
     const activityId = created.body.data.activityId as string;
@@ -181,65 +152,65 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
     expect(foreignPublish.status).toBe(404);
   });
 
-  it("T010-P02 real-world publish and confirm require KYC; virtual is exempt; waitlist allows unverified", async () => {
-    const unverifiedHost = await verifiedUser(app, emailSender, db, "t010-nokyc-host");
-    const kycHost = await verifiedUser(app, emailSender, db, "t010-kyc-host", { kyc: "APPROVED" });
-    const unverifiedGuest = await verifiedUser(app, emailSender, db, "t010-nokyc-guest");
-    const kycGuest = await verifiedUser(app, emailSender, db, "t010-kyc-guest", {
-      kyc: "APPROVED",
+  it("T010-P02 pending users denied main app; activated users publish and RSVP", async () => {
+    const pendingHost = await verifiedUser(app, emailSender, db, "t010-nokyc-host", {
+      mainAppAccess: false,
     });
+    const activatedHost = await verifiedUser(app, emailSender, db, "t010-kyc-host");
+    const pendingGuest = await verifiedUser(app, emailSender, db, "t010-nokyc-guest", {
+      mainAppAccess: false,
+    });
+    const activatedGuest = await verifiedUser(app, emailSender, db, "t010-kyc-guest");
 
-    const denied = await createDraft(app, unverifiedHost.accessToken);
-    expect(denied.status).toBe(201);
-    const publishDenied = await request(app)
-      .post(`/v1/me/activities/${denied.body.data.activityId}/publish`)
-      .set("Authorization", `Bearer ${unverifiedHost.accessToken}`);
-    expect(publishDenied.status).toBe(403);
-    expect(publishDenied.body.error.code).toBe("IDENTITY_VERIFICATION_REQUIRED");
+    const blockedDraft = await createDraft(app, pendingHost.accessToken);
+    expect(blockedDraft.status).toBe(403);
+    expect(blockedDraft.body.error.code).toBe("ONBOARDING_REQUIRED");
 
-    const virtual = await createDraft(app, unverifiedHost.accessToken, {
+    const virtual = await createDraft(app, activatedHost.accessToken, {
       mode: "VIRTUAL",
       virtualMeetingDetails: "Use the club video room",
       venueName: undefined,
       locationCity: undefined,
     });
+    expect(virtual.status).toBe(201);
     const publishVirtual = await request(app)
       .post(`/v1/me/activities/${virtual.body.data.activityId}/publish`)
-      .set("Authorization", `Bearer ${unverifiedHost.accessToken}`);
+      .set("Authorization", `Bearer ${activatedHost.accessToken}`);
     expect(publishVirtual.status).toBe(200);
 
-    const inPerson = await createDraft(app, kycHost.accessToken, {
+    const inPerson = await createDraft(app, activatedHost.accessToken, {
       capacity: 1,
       waitlistEnabled: true,
     });
     const published = await request(app)
       .post(`/v1/me/activities/${inPerson.body.data.activityId}/publish`)
-      .set("Authorization", `Bearer ${kycHost.accessToken}`);
+      .set("Authorization", `Bearer ${activatedHost.accessToken}`);
     expect(published.status).toBe(200);
     const activityId = published.body.data.activityId as string;
 
-    const unverifiedJoin = await request(app)
+    const pendingJoin = await request(app)
       .post(`/v1/activities/${activityId}/rsvp`)
-      .set("Authorization", `Bearer ${unverifiedGuest.accessToken}`);
-    expect(unverifiedJoin.status).toBe(403);
-    expect(unverifiedJoin.body.error.code).toBe("IDENTITY_VERIFICATION_REQUIRED");
+      .set("Authorization", `Bearer ${pendingGuest.accessToken}`);
+    expect(pendingJoin.status).toBe(403);
+    expect(pendingJoin.body.error.code).toBe("ONBOARDING_REQUIRED");
 
     const confirmed = await request(app)
       .post(`/v1/activities/${activityId}/rsvp`)
-      .set("Authorization", `Bearer ${kycGuest.accessToken}`);
+      .set("Authorization", `Bearer ${activatedGuest.accessToken}`);
     expect(confirmed.status).toBe(200);
     expect(confirmed.body.data.state).toBe("CONFIRMED");
 
-    const waitlisted = await request(app)
+    const waitlisted = await verifiedUser(app, emailSender, db, "t010-wait-guest");
+    const waitlistJoin = await request(app)
       .post(`/v1/activities/${activityId}/rsvp`)
-      .set("Authorization", `Bearer ${unverifiedGuest.accessToken}`);
-    expect(waitlisted.status).toBe(200);
-    expect(waitlisted.body.data.state).toBe("WAITLISTED");
+      .set("Authorization", `Bearer ${waitlisted.accessToken}`);
+    expect(waitlistJoin.status).toBe(200);
+    expect(waitlistJoin.body.data.state).toBe("WAITLISTED");
   });
 
   it("T010-C01 duplicate join is idempotent and cancellation promotes only eligible waitlist heads", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t010-cap-host", { kyc: "APPROVED" });
-    const first = await verifiedUser(app, emailSender, db, "t010-cap-1", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t010-cap-host");
+    const first = await verifiedUser(app, emailSender, db, "t010-cap-1");
     const waitlisted = await verifiedUser(app, emailSender, db, "t010-cap-2");
     const created = await createDraft(app, host.accessToken, {
       capacity: 1,
@@ -268,19 +239,17 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
       .delete(`/v1/activities/${activityId}/rsvp`)
       .set("Authorization", `Bearer ${first.accessToken}`);
     expect(leave.status).toBe(200);
-    expect(leave.body.data.promoted).toBe(false);
+    expect(leave.body.data.promoted).toBe(true);
 
     const mine = await request(app)
       .get("/v1/me/activity-rsvps")
       .set("Authorization", `Bearer ${waitlisted.accessToken}`);
     expect(mine.status).toBe(200);
-    expect(mine.body.data.rsvps[0].myParticipation.state).toBe("WAITLISTED");
+    expect(mine.body.data.rsvps[0].myParticipation.state).toBe("CONFIRMED");
 
-    const raceHost = await verifiedUser(app, emailSender, db, "t010-race-host", {
-      kyc: "APPROVED",
-    });
-    const racerA = await verifiedUser(app, emailSender, db, "t010-race-a", { kyc: "APPROVED" });
-    const racerB = await verifiedUser(app, emailSender, db, "t010-race-b", { kyc: "APPROVED" });
+    const raceHost = await verifiedUser(app, emailSender, db, "t010-race-host");
+    const racerA = await verifiedUser(app, emailSender, db, "t010-race-a");
+    const racerB = await verifiedUser(app, emailSender, db, "t010-race-b");
     const raceDraft = await createDraft(app, raceHost.accessToken, {
       capacity: 1,
       waitlistEnabled: false,
@@ -306,8 +275,8 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
   });
 
   it("T010-N02 blocks hide discovery, RSVP and meeting; meeting stays private", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t010-block-host", { kyc: "APPROVED" });
-    const guest = await verifiedUser(app, emailSender, db, "t010-block-guest", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t010-block-host");
+    const guest = await verifiedUser(app, emailSender, db, "t010-block-guest");
     const created = await createDraft(app, host.accessToken);
     await request(app)
       .post(`/v1/me/activities/${created.body.data.activityId}/publish`)
@@ -353,8 +322,8 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
   });
 
   it("T010-N03 FOLLOWERS_ONLY cannot be published; cancelled activities reject joins", async () => {
-    const host = await verifiedUser(app, emailSender, db, "t010-aud-host", { kyc: "APPROVED" });
-    const guest = await verifiedUser(app, emailSender, db, "t010-aud-guest", { kyc: "APPROVED" });
+    const host = await verifiedUser(app, emailSender, db, "t010-aud-host");
+    const guest = await verifiedUser(app, emailSender, db, "t010-aud-guest");
     const created = await createDraft(app, host.accessToken, { audience: "FOLLOWERS_ONLY" });
     const publish = await request(app)
       .post(`/v1/me/activities/${created.body.data.activityId}/publish`)

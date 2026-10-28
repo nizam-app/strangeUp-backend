@@ -8,19 +8,11 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
-import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
+import { createIntegrationUser } from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
-
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
 
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
@@ -30,26 +22,11 @@ const TINY_PNG = Buffer.from(
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
+  db: DatabaseClient,
   prefix: string,
 ): Promise<{ accessToken: string; userId: string }> {
-  const email = `${prefix}-${Date.now()}@example.com`;
-  const register = await request(app).post("/v1/auth/register").send({
-    firstName: "Gc",
-    lastName: "User",
-    email,
-    password: "ValidPass1",
-    dateOfBirth: "1995-06-15",
-    consents: defaultConsents,
-  });
-  expect(register.status).toBe(201);
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-  expect(login.status).toBe(200);
-  return {
-    accessToken: login.body.data.accessToken as string,
-    userId: login.body.data.user.id as string,
-  };
+  const user = await createIntegrationUser(app, emailSender, db, prefix);
+  return { accessToken: user.accessToken, userId: user.userId };
 }
 
 async function createPublicGroup(
@@ -125,7 +102,7 @@ describeContent("integration: group stories, photo posts & polls (Task 016)", ()
   });
 
   it("T016-G01 routes fail closed when GROUP_COMMUNITY_INTERACTIVE_ENABLED is false", async () => {
-    const owner = await verifiedUser(appDisabled, emailSender, "t016-g01");
+    const owner = await verifiedUser(appDisabled, emailSender, db, "t016-g01");
     const groupId = await createPublicGroup(appDisabled, owner.accessToken);
     const postId = await createPost(appDisabled, owner.accessToken, groupId);
 
@@ -144,8 +121,8 @@ describeContent("integration: group stories, photo posts & polls (Task 016)", ()
   });
 
   it("T016-P01 photo post attach, member read, nonmember 404", async () => {
-    const owner = await verifiedUser(appEnabled, emailSender, "t016-p01o");
-    const outsider = await verifiedUser(appEnabled, emailSender, "t016-p01x");
+    const owner = await verifiedUser(appEnabled, emailSender, db, "t016-p01o");
+    const outsider = await verifiedUser(appEnabled, emailSender, db, "t016-p01x");
     const groupId = await createPublicGroup(appEnabled, owner.accessToken);
     const postId = await createPost(appEnabled, owner.accessToken, groupId);
 
@@ -169,7 +146,7 @@ describeContent("integration: group stories, photo posts & polls (Task 016)", ()
   });
 
   it("T016-S01 story expires at read time", async () => {
-    const owner = await verifiedUser(appEnabled, emailSender, "t016-s01");
+    const owner = await verifiedUser(appEnabled, emailSender, db, "t016-s01");
     const groupId = await createPublicGroup(appEnabled, owner.accessToken);
 
     const created = await request(appEnabled)
@@ -191,8 +168,8 @@ describeContent("integration: group stories, photo posts & polls (Task 016)", ()
   });
 
   it("T016-V01 poll single vote and duplicate conflict", async () => {
-    const owner = await verifiedUser(appEnabled, emailSender, "t016-v01o");
-    const voter = await verifiedUser(appEnabled, emailSender, "t016-v01v");
+    const owner = await verifiedUser(appEnabled, emailSender, db, "t016-v01o");
+    const voter = await verifiedUser(appEnabled, emailSender, db, "t016-v01v");
     const groupId = await createPublicGroup(appEnabled, owner.accessToken);
     await request(appEnabled)
       .post(`/v1/groups/${groupId}/join`)
@@ -223,7 +200,7 @@ describeContent("integration: group stories, photo posts & polls (Task 016)", ()
   });
 
   it("T016-H01 home stories remain DEFERRED regardless of interactive flag", async () => {
-    const user = await verifiedUser(appEnabled, emailSender, "t016-h01");
+    const user = await verifiedUser(appEnabled, emailSender, db, "t016-h01");
     const home = await request(appEnabled)
       .get("/v1/home")
       .set("Authorization", `Bearer ${user.accessToken}`);

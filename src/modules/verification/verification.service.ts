@@ -15,6 +15,7 @@ import {
   type VerificationRuntimeConfig,
 } from "./verification-config.js";
 import { canStartVerification, isTerminalUserKyc } from "./verification-policy.js";
+import { toPolicyActor } from "../policy/account-policy.js";
 import type { MockWebhookBody } from "./verification.validation.js";
 import { mapProviderDecisionToUserStatus } from "./kyc-trust.js";
 import { verifyHmacSha256Hex } from "./webhook-signature.js";
@@ -97,17 +98,7 @@ export class VerificationService {
       providerEnabled: this.config.providerEnabled,
       canStartVerification:
         canStartVerificationSession(this.config) &&
-        canStartVerification(
-          {
-            userId: user.id,
-            accountStatus: user.accountStatus,
-            emailVerifiedAt: user.emailVerifiedAt,
-            ageEligibilityStatus: user.ageEligibilityStatus,
-            suspendedAt: user.suspendedAt,
-            deletedAt: user.deletedAt,
-          },
-          user,
-        ) &&
+        canStartVerification(toPolicyActor(user), user) &&
         !isTerminalUserKyc(user),
       identityVerificationStatus: user.identityVerificationStatus,
       identityVerificationApprovedAt: user.identityVerificationApprovedAt?.toISOString() ?? null,
@@ -139,17 +130,7 @@ export class VerificationService {
     }
 
     if (
-      !canStartVerification(
-        {
-          userId: user.id,
-          accountStatus: user.accountStatus,
-          emailVerifiedAt: user.emailVerifiedAt,
-          ageEligibilityStatus: user.ageEligibilityStatus,
-          suspendedAt: user.suspendedAt,
-          deletedAt: user.deletedAt,
-        },
-        user,
-      )
+      !canStartVerification(toPolicyActor(user), user)
     ) {
       throw new AppError("AUTH_FORBIDDEN", "Not eligible to start identity verification", 403);
     }
@@ -205,10 +186,30 @@ export class VerificationService {
         },
       });
 
+      const userPatch: {
+        identityVerificationStatus?: "PENDING";
+        adminReviewStatus?: "NOT_READY";
+        adminReviewVerificationSessionId?: null;
+        adminReviewDecidedAt?: null;
+      } = {};
+
       if (user.identityVerificationStatus === "NOT_STARTED") {
+        userPatch.identityVerificationStatus = "PENDING";
+      }
+
+      if (
+        user.identityVerificationStatus !== "APPROVED" &&
+        user.adminReviewStatus !== "NOT_READY"
+      ) {
+        userPatch.adminReviewStatus = "NOT_READY";
+        userPatch.adminReviewVerificationSessionId = null;
+        userPatch.adminReviewDecidedAt = null;
+      }
+
+      if (Object.keys(userPatch).length > 0) {
         await tx.user.update({
           where: { id: user.id },
-          data: { identityVerificationStatus: "PENDING" },
+          data: userPatch,
         });
       }
 
@@ -340,7 +341,13 @@ export class VerificationService {
       const incomingRank = sessionStatusRank(input.decisionStatus);
       const currentRank = sessionStatusRank(session.status);
 
-      if (incomingRank < currentRank && session.completedAt) {
+      const revokesProviderApproval =
+        input.decisionStatus === "DECLINED" ||
+        input.decisionStatus === "EXPIRED" ||
+        input.decisionStatus === "ABANDONED" ||
+        input.decisionStatus === "CANCELLED";
+
+      if (incomingRank < currentRank && session.completedAt && !revokesProviderApproval) {
         await tx.verificationWebhookReceipt.create({
           data: {
             id: randomUUID(),
@@ -393,6 +400,10 @@ export class VerificationService {
           identityVerificationApprovedAt?: Date | null;
           identityVerificationValidUntil?: Date | null;
           identityVerificationRevokedAt?: Date | null;
+          identityVerificationSessionId?: string | null;
+          adminReviewStatus?: "NOT_READY" | "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_MORE_INFO";
+          adminReviewVerificationSessionId?: string | null;
+          adminReviewDecidedAt?: Date | null;
         } = {
           identityVerificationStatus: mappedUserStatus,
         };
@@ -400,9 +411,25 @@ export class VerificationService {
         if (mappedUserStatus === "APPROVED") {
           userUpdate.identityVerificationApprovedAt = input.decisionAt;
           userUpdate.identityVerificationRevokedAt = null;
+          userUpdate.identityVerificationSessionId = session.id;
+          userUpdate.adminReviewStatus = "PENDING";
+          userUpdate.adminReviewVerificationSessionId = session.id;
+          userUpdate.adminReviewDecidedAt = null;
         } else if (mappedUserStatus === "EXPIRED" || mappedUserStatus === "REJECTED") {
           userUpdate.identityVerificationApprovedAt = null;
           userUpdate.identityVerificationValidUntil = null;
+          userUpdate.identityVerificationSessionId = null;
+          userUpdate.adminReviewStatus = "NOT_READY";
+          userUpdate.adminReviewVerificationSessionId = null;
+          userUpdate.adminReviewDecidedAt = null;
+        } else if (input.decisionStatus === "DECLINED") {
+          userUpdate.adminReviewStatus = "NOT_READY";
+          userUpdate.adminReviewVerificationSessionId = null;
+          userUpdate.adminReviewDecidedAt = null;
+        } else if (mappedUserStatus === "PENDING") {
+          userUpdate.adminReviewStatus = "NOT_READY";
+          userUpdate.adminReviewVerificationSessionId = null;
+          userUpdate.adminReviewDecidedAt = null;
         }
 
         if (input.decisionStatus === "EXPIRED") {

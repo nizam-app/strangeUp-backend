@@ -20,6 +20,18 @@ const eligible = {
   identityVerificationApprovedAt: null,
   identityVerificationValidUntil: null,
   identityVerificationRevokedAt: null,
+  identityVerificationSessionId: null,
+  adminReviewStatus: "NOT_READY" as const,
+  adminReviewVerificationSessionId: null,
+};
+
+const activated = {
+  ...eligible,
+  identityVerificationStatus: "APPROVED" as const,
+  identityVerificationApprovedAt: new Date(),
+  identityVerificationSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  adminReviewStatus: "APPROVED" as const,
+  adminReviewVerificationSessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
 };
 
 const kycApproved = {
@@ -36,40 +48,18 @@ describe("social policy", () => {
   });
 
   it("requires D-03 visibility and no blocks to start contact", () => {
-    expect(canInitiateSocialContact(eligible, other, "EVERYONE", false)).toBe(true);
-    expect(canInitiateSocialContact(eligible, other, "VERIFIED_USERS_ONLY", false)).toBe(false);
-    expect(canInitiateSocialContact(kycApproved, other, "VERIFIED_USERS_ONLY", false)).toBe(true);
+    expect(canInitiateSocialContact(eligible, other, "EVERYONE", false)).toBe(false);
+    expect(canInitiateSocialContact(activated, other, "EVERYONE", false)).toBe(true);
+    expect(canInitiateSocialContact(activated, other, "VERIFIED_USERS_ONLY", false)).toBe(true);
+    expect(canInitiateSocialContact(kycApproved, other, "VERIFIED_USERS_ONLY", false)).toBe(false);
     expect(canInitiateSocialContact(eligible, other, "EVERYONE", true)).toBe(false);
     expect(canInitiateSocialContact(eligible, eligible, "EVERYONE", false)).toBe(false);
   });
 
   it("keeps accepted conversations behind eligibility and blocks", () => {
-    expect(
-      canAccessAcceptedConversation(
-        {
-          userId: eligible.userId,
-          accountStatus: "ACTIVE",
-          emailVerifiedAt: eligible.emailVerifiedAt,
-          ageEligibilityStatus: "ELIGIBLE",
-          suspendedAt: null,
-          deletedAt: null,
-        },
-        false,
-      ),
-    ).toBe(true);
-    expect(
-      canAccessAcceptedConversation(
-        {
-          userId: eligible.userId,
-          accountStatus: "ACTIVE",
-          emailVerifiedAt: eligible.emailVerifiedAt,
-          ageEligibilityStatus: "ELIGIBLE",
-          suspendedAt: null,
-          deletedAt: null,
-        },
-        true,
-      ),
-    ).toBe(false);
+    expect(canAccessAcceptedConversation(activated, false)).toBe(true);
+    expect(canAccessAcceptedConversation(eligible, false)).toBe(false);
+    expect(canAccessAcceptedConversation(activated, true)).toBe(false);
   });
 
   it("does not reopen a declined message request", () => {

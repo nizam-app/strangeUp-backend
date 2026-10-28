@@ -8,62 +8,28 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
 import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+  createEmailVerifiedIntegrationUser,
+  createIntegrationUser,
+} from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 import { INTEREST_CATALOG } from "../../src/modules/interests/interest-catalog.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
 
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
-
-function registerPayload(email: string, dateOfBirth = "1995-06-15") {
-  return {
-    firstName: "Test",
-    lastName: "User",
-    email,
-    password: "ValidPass1",
-    dateOfBirth,
-    consents: defaultConsents,
-  };
-}
-
-async function loginUser(
-  app: ReturnType<typeof createApp>,
-  email: string,
-  password = "ValidPass1",
-): Promise<{ accessToken: string }> {
-  const login = await request(app).post("/v1/auth/login").send({ email, password });
-  expect(login.status).toBe(200);
-  return { accessToken: login.body.data.accessToken as string };
-}
-
-async function verifyEmail(
-  app: ReturnType<typeof createApp>,
-  emailSender: ReturnType<typeof createCapturingEmailSender>,
-): Promise<void> {
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  expect(token).toBeTruthy();
-  const confirm = await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  expect(confirm.status).toBe(200);
-}
-
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
+  db: DatabaseClient,
   emailPrefix: string,
+  options?: { catalogOnly?: boolean },
 ): Promise<{ email: string; accessToken: string }> {
-  const email = `${emailPrefix}-${Date.now()}@example.com`;
-  await request(app).post("/v1/auth/register").send(registerPayload(email));
-  await verifyEmail(app, emailSender);
-  const { accessToken } = await loginUser(app, email);
-  return { email, accessToken };
+  if (options?.catalogOnly) {
+    return createEmailVerifiedIntegrationUser(app, emailSender, emailPrefix);
+  }
+  const user = await createIntegrationUser(app, emailSender, db, emailPrefix);
+  return { email: user.email, accessToken: user.accessToken };
 }
 
 const describeInterests = runIntegration ? describe : describe.skip;
@@ -118,7 +84,9 @@ describeInterests("integration: profile interests (Task 007)", () => {
     const count = await db.interest.count();
     expect(count).toBe(10);
 
-    const { accessToken } = await verifiedUser(app, emailSender, "catalog");
+    const { accessToken } = await verifiedUser(app, emailSender, db, "catalog", {
+      catalogOnly: true,
+    });
 
     const catalog = await request(app)
       .get("/v1/interests")
@@ -130,7 +98,7 @@ describeInterests("integration: profile interests (Task 007)", () => {
   });
 
   it("T007-P02 self selection round-trip, replace, clear, and idempotent PUT", async () => {
-    const { accessToken } = await verifiedUser(app, emailSender, "interests-rt");
+    const { accessToken } = await verifiedUser(app, emailSender, db, "interests-rt");
 
     const empty = await request(app)
       .get("/v1/me/interests")
@@ -181,7 +149,7 @@ describeInterests("integration: profile interests (Task 007)", () => {
   });
 
   it("T007-N01 validation rejects bad payloads without persisting", async () => {
-    const { accessToken } = await verifiedUser(app, emailSender, "interests-bad");
+    const { accessToken } = await verifiedUser(app, emailSender, db, "interests-bad");
 
     await request(app)
       .put("/v1/me/interests")
@@ -201,8 +169,8 @@ describeInterests("integration: profile interests (Task 007)", () => {
   });
 
   it("T007-S01 user A cannot read or overwrite user B selections", async () => {
-    const userA = await verifiedUser(app, emailSender, "int-a");
-    const userB = await verifiedUser(app, emailSender, "int-b");
+    const userA = await verifiedUser(app, emailSender, db, "int-a");
+    const userB = await verifiedUser(app, emailSender, db, "int-b");
 
     await request(app)
       .put("/v1/me/interests")
@@ -225,10 +193,8 @@ describeInterests("integration: profile interests (Task 007)", () => {
     expect(aGet.body.data.interests).toEqual([{ slug: "hiking", label: "Hiking" }]);
   });
 
-  it("T007-P03 pending user can GET interests but PUT is denied", async () => {
-    const email = `pending-int-${Date.now()}@example.com`;
-    await request(app).post("/v1/auth/register").send(registerPayload(email));
-    const { accessToken } = await loginUser(app, email);
+  it("T007-P03 pending user can read catalog; main-app /me/interests is denied", async () => {
+    const { accessToken } = await createEmailVerifiedIntegrationUser(app, emailSender, "pending-int");
 
     const catalog = await request(app)
       .get("/v1/interests")
@@ -238,18 +204,19 @@ describeInterests("integration: profile interests (Task 007)", () => {
     const get = await request(app)
       .get("/v1/me/interests")
       .set("Authorization", `Bearer ${accessToken}`);
-    expect(get.status).toBe(200);
-    expect(get.body.data.interests).toEqual([]);
+    expect(get.status).toBe(403);
+    expect(get.body.error.code).toBe("ONBOARDING_REQUIRED");
 
     const put = await request(app)
       .put("/v1/me/interests")
       .set("Authorization", `Bearer ${accessToken}`)
       .send({ interests: ["biking"] });
     expect(put.status).toBe(403);
+    expect(put.body.error.code).toBe("ONBOARDING_REQUIRED");
   });
 
   it("T007-C01 concurrent PUT keeps a single consistent selection set", async () => {
-    const { accessToken } = await verifiedUser(app, emailSender, "int-race");
+    const { accessToken } = await verifiedUser(app, emailSender, db, "int-race");
 
     const [a, b] = await Promise.all([
       request(app)

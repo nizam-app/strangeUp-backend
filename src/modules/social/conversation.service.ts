@@ -1,6 +1,6 @@
 import { Prisma, type User } from "../../../generated/prisma/client.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import { isBlockedEitherDirection } from "../blocks/block-access.js";
+import { isBlockedEitherDirection, loadBlockedPeerIds } from "../blocks/block-access.js";
 import { toPolicyActor } from "../policy/account-policy.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import {
@@ -34,6 +34,10 @@ import type {
   SendDirectMessageInput,
 } from "./social.validation.js";
 import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
+import {
+  publishDirectMessageSafe,
+  publishDirectReadSafe,
+} from "../messaging-realtime/messaging-realtime.publish.js";
 
 const counterpartSelect = {
   id: true,
@@ -176,6 +180,67 @@ export class ConversationService {
     return { conversations, nextCursor };
   }
 
+  /** Task 023A — aggregate unread across all accessible 1:1 threads (no list pagination). */
+  async summarizeUnread(
+    viewer: User,
+  ): Promise<{ unreadMessages: number; conversationsWithUnread: number }> {
+    assertFullAccess(viewer);
+    const blockedPeers = await loadBlockedPeerIds(this.db, viewer.id);
+    const participations = await this.db.directConversationParticipant.findMany({
+      where: { userId: viewer.id },
+      select: {
+        lastReadMessageId: true,
+        lastReadAt: true,
+        conversation: {
+          select: {
+            id: true,
+            participantLowId: true,
+            participantHighId: true,
+          },
+        },
+      },
+    });
+
+    let unreadMessages = 0;
+    let conversationsWithUnread = 0;
+
+    for (const row of participations) {
+      const conversation = row.conversation;
+      const otherId = otherParticipantId(
+        conversation.participantLowId,
+        conversation.participantHighId,
+        viewer.id,
+      );
+      if (blockedPeers.has(otherId)) {
+        continue;
+      }
+      const watermark =
+        row.lastReadMessageId && row.lastReadAt
+          ? { createdAt: row.lastReadAt, id: row.lastReadMessageId }
+          : null;
+      const count = await this.db.directMessage.count({
+        where: {
+          conversationId: conversation.id,
+          authorId: { not: viewer.id },
+          ...(watermark
+            ? {
+                OR: [
+                  { createdAt: { gt: watermark.createdAt } },
+                  { AND: [{ createdAt: watermark.createdAt }, { id: { gt: watermark.id } }] },
+                ],
+              }
+            : {}),
+        },
+      });
+      if (count > 0) {
+        conversationsWithUnread += 1;
+      }
+      unreadMessages += count;
+    }
+
+    return { unreadMessages, conversationsWithUnread };
+  }
+
   async listMessages(
     viewer: User,
     conversationId: string,
@@ -279,13 +344,20 @@ export class ConversationService {
           dedupeKey: `direct-message:${conversationId}:${otherId}`,
         });
 
-        return {
+        const dto = {
           messageId: created.id,
           conversationId: created.conversationId,
           authorUserId: created.authorId,
           body: created.body,
           createdAt: created.createdAt.toISOString(),
         };
+        publishDirectMessageSafe({
+          conversationId,
+          message: dto,
+          clientMessageId: input.clientMessageId ?? null,
+          newlyPersisted: true,
+        });
+        return dto;
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -300,13 +372,20 @@ export class ConversationService {
           },
         });
         if (existing) {
-          return {
+          const dto = {
             messageId: existing.id,
             conversationId: existing.conversationId,
             authorUserId: existing.authorId,
             body: existing.body,
             createdAt: existing.createdAt.toISOString(),
           };
+          publishDirectMessageSafe({
+            conversationId,
+            message: dto,
+            clientMessageId: input.clientMessageId ?? null,
+            newlyPersisted: false,
+          });
+          return dto;
         }
       }
       throw err;
@@ -366,6 +445,11 @@ export class ConversationService {
           { AND: [{ createdAt: target.createdAt }, { id: { gt: target.id } }] },
         ],
       },
+    });
+    publishDirectReadSafe({
+      conversationId,
+      readerUserId: viewer.id,
+      unreadCount,
     });
     return { unreadCount };
   }

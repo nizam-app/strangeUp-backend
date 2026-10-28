@@ -6,6 +6,7 @@ import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { checkRateLimit, throwIfRateLimited } from "../auth/rate-limit.js";
 import { ConversationService } from "./conversation.service.js";
 import { FollowService } from "./follow.service.js";
+import { MessagingSummaryService } from "./messaging-summary.service.js";
 import { MessageRequestService } from "./message-request.service.js";
 import { WaveService } from "./wave.service.js";
 import {
@@ -37,6 +38,7 @@ export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv 
   const waveService = new WaveService(deps.db);
   const requestService = new MessageRequestService(deps.db);
   const conversationService = new ConversationService(deps.db);
+  const messagingSummaryService = new MessagingSummaryService(deps.db);
   const followLimit = deps.env.SOCIAL_RATE_LIMIT_FOLLOW_PER_USER;
   const waveLimit = deps.env.SOCIAL_RATE_LIMIT_WAVE_PER_USER;
   const requestLimit = deps.env.SOCIAL_RATE_LIMIT_REQUEST_PER_USER;
@@ -161,6 +163,11 @@ export function createSocialControllers(deps: { db: DatabaseClient; env: AppEnv 
       const { conversationId } = socialConversationIdParamSchema.parse(req.params);
       const body = markConversationReadBodySchema.parse(req.body ?? {});
       const data = await conversationService.markRead(requireUser(req), conversationId, body);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    getMessagingSummary: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const data = await messagingSummaryService.getSummary(requireUser(req));
       res.status(200).json({ data, meta: { requestId: req.requestId } });
     },
   };

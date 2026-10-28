@@ -27,6 +27,9 @@ import { createHomeRouter } from "./modules/home/home.routes.js";
 import { createStoreRouter } from "./modules/store/store.routes.js";
 import { createJobsRouter } from "./modules/jobs/job.routes.js";
 import { createMembershipRouter } from "./modules/membership/membership.routes.js";
+import { createAdminRouter } from "./modules/admin/admin.routes.js";
+import { createRequireHomeAccessMiddleware } from "./common/middleware/require-home-access.js";
+import { createAuthenticateMiddleware } from "./common/middleware/authenticate.js";
 import { createHealthRouter } from "./routes/health.js";
 import type { EmailSender } from "./modules/auth/email-sender.js";
 
@@ -109,18 +112,32 @@ export function createApp(deps: CreateAppDeps): express.Application {
       createInterestsRouter({ db, authService: authController.authService }),
     );
     const authService = authController.authService;
+    const authenticate = createAuthenticateMiddleware(authService);
+    const requireHomeAccess = createRequireHomeAccessMiddleware({ db, env });
+
+    const mountMainApp = (path: string, router: express.Router) => {
+      const gated = express.Router();
+      gated.use(authenticate, requireHomeAccess);
+      gated.use(router);
+      app.use(path, gated);
+    };
+
     app.use("/v1/me", createMeRouter({ db, authService, env }));
-    app.use("/v1/discover", createDiscoverRouter({ db, authService }));
-    app.use("/v1/users", createPublicUsersRouter({ db, authService, env }));
-    app.use("/v1/users", createSocialUsersRouter({ db, authService, env }));
-    app.use("/v1/activity-categories", createActivityCategoriesRouter({ db, authService, env }));
-    app.use("/v1/activities", createActivitiesRouter({ db, authService, env }));
-    app.use("/v1/group-categories", createGroupCategoriesRouter({ db, authService, env }));
-    app.use("/v1/groups", createGroupsRouter({ db, authService, env }));
-    app.use("/v1/home", createHomeRouter({ db, authService, env }));
-    app.use("/v1/store", createStoreRouter({ db, authService, env }));
-    app.use("/v1/jobs", createJobsRouter({ db, authService, env }));
-    app.use("/v1/membership", createMembershipRouter({ db, authService, env }));
+    mountMainApp("/v1/discover", createDiscoverRouter({ db, authService }));
+    mountMainApp("/v1/users", createPublicUsersRouter({ db, authService, env }));
+    mountMainApp("/v1/users", createSocialUsersRouter({ db, authService, env }));
+    mountMainApp(
+      "/v1/activity-categories",
+      createActivityCategoriesRouter({ db, authService, env }),
+    );
+    mountMainApp("/v1/activities", createActivitiesRouter({ db, authService, env }));
+    mountMainApp("/v1/group-categories", createGroupCategoriesRouter({ db, authService, env }));
+    mountMainApp("/v1/groups", createGroupsRouter({ db, authService, env }));
+    mountMainApp("/v1/home", createHomeRouter({ db, authService, env }));
+    mountMainApp("/v1/store", createStoreRouter({ db, authService, env }));
+    mountMainApp("/v1/jobs", createJobsRouter({ db, authService, env }));
+    mountMainApp("/v1/membership", createMembershipRouter({ db, authService, env }));
+    app.use("/v1/admin", createAdminRouter({ db, authService, env }));
   }
 
   app.use(notFoundHandler);

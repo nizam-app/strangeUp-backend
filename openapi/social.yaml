@@ -94,6 +94,47 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Declined }
+  /v1/me/messaging/summary:
+    get:
+      summary: Header messaging badge aggregates (Task 023A)
+      description: >
+        Read-only counts for DM unread, group chat unread, and pending inbox message requests.
+        `totalUnreadMessages` and `displayBadgeCount` sum DM + group only (not requests or notifications).
+        Requires Task 022 full main-app access.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Messaging summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - directUnread
+                      - groupUnread
+                      - messageRequestsPending
+                      - totalUnreadMessages
+                      - displayBadgeCount
+                      - directConversationsWithUnread
+                      - groupChatsWithUnread
+                    properties:
+                      directUnread: { type: integer, minimum: 0 }
+                      groupUnread: { type: integer, minimum: 0 }
+                      messageRequestsPending: { type: integer, minimum: 0 }
+                      totalUnreadMessages: { type: integer, minimum: 0 }
+                      displayBadgeCount: { type: integer, minimum: 0 }
+                      directConversationsWithUnread: { type: integer, minimum: 0 }
+                      groupChatsWithUnread: { type: integer, minimum: 0 }
+                  meta:
+                    type: object
+                    properties:
+                      requestId: { type: string }
+        "403": { description: Onboarding / main app not activated }
   /v1/me/conversations:
     get:
       summary: Self 1:1 conversation list

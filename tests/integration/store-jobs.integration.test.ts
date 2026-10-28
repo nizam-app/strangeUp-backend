@@ -9,43 +9,20 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
-import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
+import { createIntegrationUser } from "../helpers/integration-user.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
 
-const defaultConsents = [
-  { type: "TERMS", version: "pending-legal-review" },
-  { type: "PRIVACY", version: "pending-legal-review" },
-  { type: "AGE_ATTESTATION", version: "pending-legal-review" },
-];
-
 async function verifiedUser(
   app: ReturnType<typeof createApp>,
   emailSender: ReturnType<typeof createCapturingEmailSender>,
+  db: DatabaseClient,
   prefix: string,
 ): Promise<{ accessToken: string; userId: string }> {
-  const email = `${prefix}-${Date.now()}@example.com`;
-  const register = await request(app).post("/v1/auth/register").send({
-    firstName: "Store",
-    lastName: "Jobs",
-    email,
-    password: "ValidPass1",
-    dateOfBirth: "1995-06-15",
-    consents: defaultConsents,
-  });
-  expect(register.status).toBe(201);
-  const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-  await request(app).post("/v1/auth/email-verification/confirm").send({ token });
-  const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-  expect(login.status).toBe(200);
-  return {
-    accessToken: login.body.data.accessToken as string,
-    userId: login.body.data.user.id as string,
-  };
+  const user = await createIntegrationUser(app, emailSender, db, prefix);
+  return { accessToken: user.accessToken, userId: user.userId };
 }
 
 async function seedPublishedProduct(db: DatabaseClient, tag: string) {
@@ -146,7 +123,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
   });
 
   it("T014-S01 categories list and empty published catalog is valid", async () => {
-    const user = await verifiedUser(app, emailSender, "t014-s01");
+    const user = await verifiedUser(app, emailSender, db, "t014-s01");
     const categories = await request(app)
       .get("/v1/store/categories")
       .set("Authorization", `Bearer ${user.accessToken}`);
@@ -163,7 +140,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
   });
 
   it("T014-S02 favorites, cart, checkout unavailable, stock validation", async () => {
-    const user = await verifiedUser(app, emailSender, "t014-s02");
+    const user = await verifiedUser(app, emailSender, db, "t014-s02");
     const { productId, variantId } = await seedPublishedProduct(db, "s02");
 
     const fav = await request(app)
@@ -185,7 +162,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
     expect(add.body.data.subtotalCents).toBe(9000);
     expect(add.body.data.checkout.status).toBe("UNAVAILABLE");
 
-    const other = await verifiedUser(app, emailSender, "t014-s02b");
+    const other = await verifiedUser(app, emailSender, db, "t014-s02b");
     const steal = await request(app)
       .get("/v1/me/store/cart")
       .set("Authorization", `Bearer ${other.accessToken}`);
@@ -198,7 +175,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
   });
 
   it("T014-J01 job discovery, save, duplicate application conflict", async () => {
-    const user = await verifiedUser(app, emailSender, "t014-j01");
+    const user = await verifiedUser(app, emailSender, db, "t014-j01");
     const { jobId } = await seedPublishedJob(db, "j01");
 
     const list = await request(app)
@@ -231,7 +208,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
       });
     expect(dup.status).toBe(409);
 
-    const other = await verifiedUser(app, emailSender, "t014-j01x");
+    const other = await verifiedUser(app, emailSender, db, "t014-j01x");
     const steal = await request(app)
       .get(`/v1/me/job-applications/${apply.body.data.applicationId}`)
       .set("Authorization", `Bearer ${other.accessToken}`);
@@ -239,7 +216,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
   });
 
   it("T014-J02 draft job stays private; closed job rejects apply", async () => {
-    const user = await verifiedUser(app, emailSender, "t014-j02");
+    const user = await verifiedUser(app, emailSender, db, "t014-j02");
     const draft = await request(app)
       .post("/v1/me/job-listings")
       .set("Authorization", `Bearer ${user.accessToken}`)

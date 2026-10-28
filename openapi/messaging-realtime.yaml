@@ -1,0 +1,31 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Messaging Socket.IO (Task 023B)
+  version: 0.1.0
+  description: >
+    Real-time notifications for persisted DM and group chat messages. REST remains authoritative
+    for writes/history. Connect with access JWT in handshake auth `{ "token": "<accessToken>" }`.
+    Path defaults to `/socket.io`. Requires Task 022 main-app activation (same as REST).
+servers:
+  - url: http://localhost:3000
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+paths:
+  /socket.io:
+    get:
+      summary: Socket.IO transport (WebSocket upgrade)
+      description: |
+        **Client → server events:** `messaging:subscribe_dm`, `messaging:unsubscribe_dm`,
+        `messaging:subscribe_group`, `messaging:unsubscribe_group`, `messaging:typing`.
+
+        **Server → client events:** `messaging:connected`, `messaging:subscribed`, `messaging:unsubscribed`,
+        `messaging:error`, `messaging:dm_message`, `messaging:group_message`, `messaging:dm_read`,
+        `messaging:group_read`, `messaging:summary`, `messaging:typing`.
+
+        Dedupe using `eventId` (message events use `messageId`). After reconnect, call REST list/history
+        endpoints to fill gaps. No online/presence indicators. Typing is ephemeral only.
+      security: [{ bearerAuth: [] }]

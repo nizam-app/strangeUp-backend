@@ -165,6 +165,10 @@ export class GroupMembershipService {
         },
       });
     });
+    const { onUserLeftGroup } = await import(
+      "../messaging-realtime/messaging-realtime.lifecycle.js"
+    );
+    void onUserLeftGroup(viewer.id, groupId).catch(() => undefined);
     return { left: true };
   }
 

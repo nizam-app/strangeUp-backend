@@ -1,27 +1,15 @@
-import type {
-  AccountStatus,
-  AgeEligibilityStatus,
-  User,
-} from "../../../generated/prisma/client.js";
+import {
+  hasFullAccountAccess as hasHomeAccessFromActivation,
+  toActivationPolicyActor,
+  type ActivationPolicyActor,
+  type ActivationPolicyUserInput,
+} from "./effective-access-policy.js";
+import type { KycEnforcementContext } from "../verification/kyc-trust.js";
 
-export type PolicyActor = {
-  userId: string;
-  accountStatus: AccountStatus;
-  emailVerifiedAt: Date | null;
-  ageEligibilityStatus: AgeEligibilityStatus;
-  suspendedAt: Date | null;
-  deletedAt: Date | null;
-};
+export type PolicyActor = ActivationPolicyActor;
 
-export function toPolicyActor(user: User): PolicyActor {
-  return {
-    userId: user.id,
-    accountStatus: user.accountStatus,
-    emailVerifiedAt: user.emailVerifiedAt,
-    ageEligibilityStatus: user.ageEligibilityStatus,
-    suspendedAt: user.suspendedAt,
-    deletedAt: user.deletedAt,
-  };
+export function toPolicyActor(user: ActivationPolicyUserInput): PolicyActor {
+  return toActivationPolicyActor(user);
 }
 
 function isAccountTerminalBlocked(actor: PolicyActor): boolean {
@@ -33,7 +21,7 @@ function isAccountTerminalBlocked(actor: PolicyActor): boolean {
   );
 }
 
-/** Own account read access (restricted states may still read subset via future /me routes). */
+/** Own account read access (restricted states may still read subset via /me routes). */
 export function canAccessAccount(actor: PolicyActor | null, userId: string): boolean {
   if (!actor || actor.userId !== userId) {
     return false;
@@ -78,11 +66,10 @@ export function canInteractWithUser(_actor: PolicyActor | null, _targetUserId: s
   return false;
 }
 
-export function hasFullAccountAccess(actor: PolicyActor): boolean {
-  return (
-    actor.accountStatus === "ACTIVE" &&
-    actor.emailVerifiedAt !== null &&
-    actor.ageEligibilityStatus === "ELIGIBLE" &&
-    !isAccountTerminalBlocked(actor)
-  );
+/** Main product / Home gate (provider KYC + StrangeUp admin approval + account eligibility). */
+export function hasFullAccountAccess(
+  actor: PolicyActor,
+  kycCtx?: KycEnforcementContext,
+): boolean {
+  return hasHomeAccessFromActivation(actor, kycCtx);
 }

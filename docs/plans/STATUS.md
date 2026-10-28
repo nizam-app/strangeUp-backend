@@ -1,3 +1,86 @@
+# StrangeUp Engineering Status (as of 2026-10-28, Task 023E complete)
+
+## Task 023E (Phase E — Header Flow final parity audit)
+
+- **AUDIT:** `docs/product/FIGMA_HEADER_FLOW_PARITY_TASK023.md` — Screens 14/16/17, notifications PDF, socket + push matrix (MATCHED/PARTIAL/MISSING/DEFERRED).
+- **FIXES:** Push stale-notification backlog guard (`PUSH_MAX_NOTIFICATION_AGE_SECONDS`); `applyAccountRestrictionSideEffects` export for future admin suspend writer.
+- **TESTS:** `header-flow-023e.integration.test.ts`, `notification-preference-push.integration.test.ts`, extended push-outbox (stale + dedupe).
+- **NOT RUN:** Full Neon regression (release gate only).
+- **STOP:** Task 023 complete; no further Header Flow phases in plan.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 023D complete)
+
+## Task 023D (Phase D — FCM infrastructure + socket account hardening; live send off)
+
+- **Socket hardening:** Periodic account/session eligibility recheck disconnects suspended users; server-side typing TTL stop; summary emit skips ineligible recipients; lifecycle hook `onUserAccountRestricted` for proactive disconnect.
+- **IMPLEMENTED:** `firebase-admin` sender abstraction (mock/disabled/firebase); `PushNotificationOutbox` migration + worker (atomic claim, backoff, dedupe via unique notification id, stale lock recovery); enqueue from `NotificationEmitter`; `PUSH_ENABLED=false` default; production still fail-closed for live push.
+- **DOCS:** handoff §14.7, `docs/operations/PUSH_DELIVERY_TASK023D.md`, `.env.example`.
+- **TESTS:** `push-payload.test.ts`, `messaging-realtime.typing-expiry.test.ts`, `push-outbox.integration.test.ts`, socket suspend/summary tests in `messaging-socket.integration.test.ts`.
+- **DEFERRED (023E):** Header Flow final parity, group notification product decisions, full Neon regression, production FCM authorization, Redis Socket.IO cluster adapter.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 023C complete)
+
+## Task 023C (Phase C — device tokens & preferences; FCM off)
+
+- **023B hardening:** User-targeted socket delivery with live recipient ACL; proactive room eviction on block/group leave; session logout disconnect; startup fails if `SOCKET_IO_REDIS_ADAPTER_ENABLED=true` without adapter; passive leak integration tests.
+- **IMPLEMENTED:** `UserDeviceToken` + `UserNotificationPreference` migration; `POST/GET/DELETE /v1/me/device-tokens`; `GET/PATCH /v1/me/notification-preferences`; session logout revokes bound tokens; `PUSH_ENABLED=false` default + production fail-closed.
+- **DOCS:** `openapi/push-devices.yaml`, handoff §14.6, `CURRENT_APIS.md`.
+- **TESTS:** `push-devices.integration.test.ts`, extended `messaging-socket.integration.test.ts`, `messaging-realtime.redis-startup.test.ts`.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 023B complete)
+
+## Task 023B (Phase B — Socket.IO messaging realtime)
+
+- **IMPLEMENTED:** Socket.IO on shared HTTP server; JWT + session + Task 022 gate; DM/group subscribe ACL; REST-triggered broadcasts (`dm_message`, `group_message`, read + `messaging:summary`); ephemeral typing; idempotent REST does not re-broadcast; session revalidation on protected client events.
+- **CONFIG:** `SOCKET_IO_ENABLED`, `SOCKET_IO_PATH`, typing intervals; `SOCKET_IO_REDIS_ADAPTER_ENABLED=false` (multi-instance adapter not wired — do not reuse rate-limit Redis).
+- **DOCS:** `FLUTTER_DEVELOPER_HANDOFF.md` §14.5, `openapi/messaging-realtime.yaml`.
+- **TESTS:** `tests/integration/messaging-socket.integration.test.ts`, `tests/messaging-realtime.typing.test.ts`.
+- **DEFERRED (023C+):** FCM/device tokens, push delivery, Redis cluster adapter verification, full Header Flow E2E.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 023A complete)
+
+## Task 023A (Phase A — REST messaging summary)
+
+- **IMPLEMENTED:** `GET /v1/me/messaging/summary` — `directUnread`, `groupUnread`, `messageRequestsPending`, `totalUnreadMessages` / `displayBadgeCount`, thread-level breakdown fields; Task 022 home gate; block/privacy aligned with existing DM/group/request list semantics.
+- **DOCS:** `CURRENT_APIS.md`, `FLUTTER_DEVELOPER_HANDOFF.md` §14, `openapi/social.yaml`, `docs/product/FIGMA_HEADER_FLOW_PARITY_TASK023A.md`.
+- **TESTS:** `tests/integration/messaging-summary.integration.test.ts` (Neon gate); unit/typecheck/lint/build in phase report.
+- **DEFERRED (023B+):** Socket.IO, FCM, typing, presence, chat media, owner group invitations, full Header Flow E2E.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 022D complete)
+
+## Task 022A (accepted)
+
+- Admin review lifecycle schema, `GET /v1/me/onboarding/status`, tightened Home gate (provider KYC + admin approval), IDV without circular gate, provider APPROVED → admin `PENDING`. ADR-005.
+
+## Task 022B (accepted — local, not committed)
+
+- `PlatformStaffGrant` + `IDENTITY_REVIEWER`; admin identity review list/detail/approve/reject; audit + idempotency; onboarding `ADMIN_REJECTED`; ops doc + `openapi/admin.yaml`.
+
+## Task 022C (Phase C — local, not committed)
+
+- **IMPLEMENTED:** Central `assertMainAppHomeAccess` (DB reload per request); router-level `authenticate` + `requireHomeAccess` on main-app mounts in `app.ts`; `/v1/me` split — onboarding-safe routes before gate, product routes after `authenticate` + gate; error codes `ONBOARDING_REQUIRED` / `ACCOUNT_NOT_ACTIVATED` with `nextAction`, `onboardingPhase`, `homeAccessAllowed`.
+- **Ungated:** `/v1/auth/*`, `/v1/consents/*`, `/v1/webhooks/*`, `/health/*`, `/v1/admin/*` (staff only), `/v1/interests` catalog (auth + account access only).
+- **Tests:** Shared `tests/helpers/integration-user.ts` + `seedMainAppActivatedUser`; `tests/integration/access-enforcement.integration.test.ts`; legacy integration fixtures updated.
+- **VERIFIED (Neon `strangeup_test`):** unit **203** passed; integration **117 passed**, 1 skipped (118 total); prisma validate/generate, typecheck, lint, build.
+## Task 022D (Phase D — local, not committed)
+
+- **DONE:** Figma auth ZIP parity matrix (`docs/product/FIGMA_AUTH_FLOW_PARITY_TASK022.md`); targeted auth E2E integration `auth-flow-e2e.task022d.integration.test.ts` (7 journeys); acceptance report `docs/plans/TASK_022D_AUTH_FLOW_ACCEPTANCE_REPORT.md`; handoff + ADR-005 + API doc updates.
+- **AUTH FLOW (sandbox):** Verified end-to-end with mock provider + staff reviewer on Neon `strangeup_test`.
+- **NOT VERIFIED:** Production Veriff, strict consent, prod email, OAuth, Admin UI, Home Figma (owner-supplied later).
+- **Integration regression:** Full suite **not re-run** in 022D (022C baseline **117 passed**, 1 skipped).
+
+---
+
 # StrangeUp Engineering Status (as of 2026-10-27, Task 021)
 
 | Scope | Status | Evidence / blockers |

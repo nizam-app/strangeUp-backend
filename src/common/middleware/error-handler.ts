@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { AppError, isAppError } from "../errors/app-error.js";
+import { MainAppAccessError } from "../../modules/policy/home-access-enforcement.js";
 import type { ApiErrorResponse } from "../types/api.js";
 import { redactSensitive } from "../utils/redact.js";
 import type { Logger } from "pino";
@@ -55,6 +56,13 @@ export function createErrorHandler(options: { logger: Logger; isProduction: bool
 
     if (appError.code === "INTERNAL_ERROR" && isProduction) {
       body.error.message = "An unexpected error occurred";
+    }
+
+    if (err instanceof MainAppAccessError) {
+      body.error.nextAction = err.denial.nextAction;
+      body.error.onboardingPhase = err.denial.onboardingPhase;
+      body.error.effectiveApplicationAccess = err.denial.effectiveApplicationAccess;
+      body.error.homeAccessAllowed = false;
     }
 
     res.status(appError.statusCode).json(body);

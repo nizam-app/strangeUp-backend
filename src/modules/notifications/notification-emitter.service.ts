@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Prisma, UserNotificationType } from "../../../generated/prisma/client.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { NOTIFICATION_DM_AGGREGATE_WINDOW_MS } from "./notification.constants.js";
+import { enqueuePushOutboxForNotification } from "../push-delivery/push-outbox-enqueue.js";
 
 type DbLike = DatabaseClient | Prisma.TransactionClient;
 
@@ -54,9 +55,10 @@ export class NotificationEmitter {
       }
     }
 
+    const notificationId = randomUUID();
     await client.userNotification.create({
       data: {
-        id: randomUUID(),
+        id: notificationId,
         recipientId: input.recipientId,
         type: input.type,
         actorUserId: input.actorUserId ?? null,
@@ -65,6 +67,10 @@ export class NotificationEmitter {
         body: input.body,
         dedupeKey: input.dedupeKey ?? null,
       },
+    });
+    await enqueuePushOutboxForNotification(client, {
+      userNotificationId: notificationId,
+      recipientId: input.recipientId,
     });
   }
 

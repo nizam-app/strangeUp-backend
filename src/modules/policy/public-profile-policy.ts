@@ -3,6 +3,7 @@ import type {
   AgeEligibilityStatus,
   IdentityVerificationStatus,
   ProfileVisibility,
+  StrangeUpAdminReviewStatus,
 } from "../../../generated/prisma/client.js";
 import type { PolicyActor } from "./account-policy.js";
 import { hasFullAccountAccess } from "./account-policy.js";
@@ -23,6 +24,9 @@ export type DiscoverUserSnapshot = {
   identityVerificationApprovedAt: Date | null;
   identityVerificationValidUntil: Date | null;
   identityVerificationRevokedAt: Date | null;
+  identityVerificationSessionId?: string | null;
+  adminReviewStatus?: StrangeUpAdminReviewStatus;
+  adminReviewVerificationSessionId?: string | null;
 };
 
 export type PublicKycContext = KycEnforcementContext;
@@ -93,6 +97,13 @@ export function canViewPublicProfile(
     ageEligibilityStatus: viewer.ageEligibilityStatus,
     suspendedAt: viewer.suspendedAt,
     deletedAt: viewer.deletedAt,
+    identityVerificationStatus: viewer.identityVerificationStatus,
+    identityVerificationApprovedAt: viewer.identityVerificationApprovedAt,
+    identityVerificationValidUntil: viewer.identityVerificationValidUntil,
+    identityVerificationRevokedAt: viewer.identityVerificationRevokedAt,
+    identityVerificationSessionId: viewer.identityVerificationSessionId ?? null,
+    adminReviewStatus: viewer.adminReviewStatus ?? "NOT_READY",
+    adminReviewVerificationSessionId: viewer.adminReviewVerificationSessionId ?? null,
   };
   if (!canBrowseDiscovery(viewerActor)) {
     return false;
@@ -124,6 +135,9 @@ export function toDiscoverUserSnapshot(user: {
   identityVerificationApprovedAt?: Date | null;
   identityVerificationValidUntil?: Date | null;
   identityVerificationRevokedAt?: Date | null;
+  identityVerificationSessionId?: string | null;
+  adminReviewStatus?: StrangeUpAdminReviewStatus;
+  adminReviewVerificationSessionId?: string | null;
 }): DiscoverUserSnapshot {
   return {
     userId: user.id,
@@ -136,5 +150,8 @@ export function toDiscoverUserSnapshot(user: {
     identityVerificationApprovedAt: user.identityVerificationApprovedAt ?? null,
     identityVerificationValidUntil: user.identityVerificationValidUntil ?? null,
     identityVerificationRevokedAt: user.identityVerificationRevokedAt ?? null,
+    identityVerificationSessionId: user.identityVerificationSessionId ?? null,
+    adminReviewStatus: user.adminReviewStatus,
+    adminReviewVerificationSessionId: user.adminReviewVerificationSessionId ?? null,
   };
 }

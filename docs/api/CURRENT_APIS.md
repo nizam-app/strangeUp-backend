@@ -14,7 +14,7 @@
 **Base URL (local):** `http://localhost:3000` (default `PORT` from env)
 **Product API prefix:** `/v1`
 
-**OpenAPI:** `openapi/foundation.yaml` (health), `openapi/identity.yaml` (auth + self account/profile), `openapi/settings.yaml` (Task 015), `openapi/activities.yaml` (Task 010), `openapi/social.yaml` (Task 011), `openapi/groups.yaml` (Task 012), `openapi/home.yaml` (Task 013), `openapi/notifications.yaml` (Task 013), `openapi/store.yaml` (Task 014), `openapi/jobs.yaml` (Task 014)
+**OpenAPI:** `openapi/foundation.yaml` (health), `openapi/identity.yaml` (auth + self account/profile), `openapi/settings.yaml` (Task 015), `openapi/activities.yaml` (Task 010), `openapi/social.yaml` (Task 011), `openapi/groups.yaml` (Task 012), `openapi/messaging-realtime.yaml` (Task 023B Socket.IO), `openapi/push-devices.yaml` (Task 023C), `openapi/home.yaml` (Task 013), `openapi/notifications.yaml` (Task 013), `openapi/store.yaml` (Task 014), `openapi/jobs.yaml` (Task 014)
 
 ---
 
@@ -290,6 +290,7 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 
 | Method | Path | Eligibility | Description |
 |---|---|---|---|
+| `GET` | `/v1/me/onboarding/status` | `canAccessAccount` | Onboarding / activation summary (`onboardingPhase`, `homeAccessAllowed`, `nextAction`, admin + IDV dimensions) — Task 022A/022B |
 | `GET` | `/v1/me/account` | `canAccessAccount` (pending or active; not suspended/deleted) | Private account status DTO |
 | `GET` | `/v1/me/profile` | `canAccessAccount` | Own profile (read-only birthDate) |
 | `PATCH` | `/v1/me/profile` | `canEditProfile` (verified email + age eligible + not suspended) | Narrow field allowlist |
@@ -648,12 +649,59 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | `GET` | `/v1/me/message-requests` | `box=inbox\|sent`, optional `status` |
 | `POST` | `/v1/me/message-requests/:requestId/accept` | Recipient-only; creates/returns one canonical conversation |
 | `POST` | `/v1/me/message-requests/:requestId/decline` | Recipient-only; retry create → `409` |
+| `GET` | `/v1/me/messaging/summary` | **Task 023A** — DM + group unread totals, pending inbox requests, badge fields (see below) |
 | `GET` | `/v1/me/conversations` | Self 1:1 list, last-message preview, `unreadCount`, optional `q` |
 | `GET` | `/v1/me/conversations/:conversationId/messages` | Participant-only; latest-first page reversed to chronological |
 | `POST` | `/v1/me/conversations/:conversationId/messages` | `{ "body", "clientMessageId?" }` after accept; `201` |
 | `POST` | `/v1/me/conversations/:conversationId/read` | Monotonic watermark `{ "messageId?" }` → `{ unreadCount }` |
 
-**Not returned:** E2EE flags, delivered/device status, typing, presence, meeting instructions, email/DOB/KYC. Group chats are a separate Task 012 contract (`/v1/me/group-chats`).
+#### `GET /v1/me/messaging/summary` (Task 023A)
+
+**Gate:** Bearer + Task 022 `requireHomeAccess` (same as other `/v1/me/*` main-app routes after onboarding split). Pending applicants → `403 ONBOARDING_REQUIRED`.
+
+**Response `data`:**
+
+| Field | Meaning |
+|-------|---------|
+| `directUnread` | Count of unread **messages** in accepted 1:1 threads (others’ messages after read watermark; blocked threads excluded) |
+| `groupUnread` | Count of unread **messages** in ACTIVE group chats (blocked authors excluded; same rules as `/v1/me/group-chats`) |
+| `messageRequestsPending` | Count of **PENDING** inbox requests (`GET /v1/me/message-requests?box=inbox&status=PENDING` semantics; blocked senders excluded) |
+| `totalUnreadMessages` | `directUnread + groupUnread` |
+| `displayBadgeCount` | Alias of `totalUnreadMessages` for header Messages icon |
+| `directConversationsWithUnread` | Number of 1:1 threads with `directUnread > 0` per thread |
+| `groupChatsWithUnread` | Number of group chats with `groupUnread > 0` per group |
+
+**Not included:** notification bell count (`GET /v1/home` → `notificationsUnreadCount` or `/v1/me/notifications`), typing/presence, delivery receipts. **Do not add** `messageRequestsPending` into `displayBadgeCount` (Requests tab uses its own badge).
+
+**Tests:** `tests/integration/messaging-summary.integration.test.ts` (native DB gate).
+
+#### Socket.IO messaging realtime (Task 023B)
+
+**Transport:** WebSocket via Socket.IO on the same HTTP server (`SOCKET_IO_PATH`, default `/socket.io`). Disable with `SOCKET_IO_ENABLED=false` (REST unchanged).
+
+**Auth:** Access JWT in handshake `auth.token` (or `Authorization: Bearer`). Requires Task 022 main-app activation. Session re-checked on subscribe/typing; revoked sessions disconnected.
+
+**Contract:** See `openapi/messaging-realtime.yaml` and `FLUTTER_DEVELOPER_HANDOFF.md` §14.5. Events notify committed REST state only (`messaging:dm_message`, `messaging:group_message`, read events, `messaging:summary`, ephemeral `messaging:typing`). **No** second write path. Dedupe client-side by `eventId` / `messageId`. Multi-instance Redis adapter **not enabled** (`SOCKET_IO_REDIS_ADAPTER_ENABLED` must stay false until dedicated ops verification).
+
+**Tests:** `tests/integration/messaging-socket.integration.test.ts` (native DB gate; includes passive leak cases after block/leave).
+
+**023B hardening:** Emits target authorized **user rooms** only; evicts DM/group rooms on block/leave; disconnects sockets on session revocation; **`SOCKET_IO_REDIS_ADAPTER_ENABLED=true` fails startup** until adapter is implemented.
+
+#### Push device registration & preferences (Task 023C — FCM delivery OFF)
+
+**Gate:** Task 022 main-app activation. **`PUSH_ENABLED` default false** (production fail-closed if true without 023D).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/me/device-tokens` | Register/rotate own FCM token (stored server-side; never returned in list) |
+| `GET` | `/v1/me/device-tokens` | Active device metadata for caller |
+| `DELETE` | `/v1/me/device-tokens/:deviceTokenId` | Revoke own device |
+| `GET` | `/v1/me/notification-preferences` | Read toggles; `deliveryStatus: PUSH_DISABLED` |
+| `PATCH` | `/v1/me/notification-preferences` | Partial preference update |
+
+**Tests:** `tests/integration/push-devices.integration.test.ts`.
+
+**Not in REST DTOs:** E2EE flags, device delivery receipts, presence/online, meeting instructions, email/DOB/KYC. Ephemeral typing is Socket-only (§14.5). Group chats remain Task 012 REST (`/v1/me/group-chats`).
 
 **Block:** Either direction hides follow/wave/request/conversation/message content (`404`). Unblock does not recreate consent. Declined requests stay declined.
 
@@ -954,6 +1002,45 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 **Source:** `src/modules/verification/*`, migration `20261027250000_kyc_verification_consent`
 
+**Task 022A onboarding router:** `GET /v1/me/onboarding/status` — activation summary (`onboardingPhase`, `nextAction`, `homeAccessAllowed`). See self `/v1/me` table above.
+
+---
+
+### Admin identity review (Task 022B — backend only, no Admin UI)
+
+**Auth:** Bearer session + active `PlatformStaffGrant` role `IDENTITY_REVIEWER` (see `docs/operations/PLATFORM_STAFF_PROVISIONING.md`). Never assign via register/login/client flags.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/admin/identity-reviews` | Paginated queue (`status=PENDING\|APPROVED\|REJECTED`, `limit`, `cursor`) — minimal DTO, masked email |
+| `GET` | `/v1/admin/identity-reviews/:reviewId` | Detail (`reviewId` = applicant `userId`); session metadata + recent audit decisions — no ID/selfie payloads |
+| `POST` | `/v1/admin/identity-reviews/:reviewId/approve` | Approve activation when provider session APPROVED and eligibility gates pass; optional `Idempotency-Key` |
+| `POST` | `/v1/admin/identity-reviews/:reviewId/reject` | Reject with bounded `reasonCode`; optional `Idempotency-Key` |
+
+**Rules:** Admin approve **never** overrides provider decline/expiry/revocation; self-review forbidden; production rejects mock-provider approvals. Provider `APPROVED` webhook sets admin `PENDING` only.
+
+**Source:** `src/modules/admin/*`, migrations `20261028120000_task022a_admin_review_lifecycle`, `20261028140000_task022b_platform_staff_admin_review`
+
+**OpenAPI:** `openapi/admin.yaml`
+
+---
+
+### Main-app access enforcement (Task 022C)
+
+**Policy:** `hasHomeAccess` = email verified + age eligible + ACTIVE + trusted provider KYC + admin `APPROVED` tied to the same `identityVerificationSessionId`. Enforced at HTTP layer via DB reload (`createRequireHomeAccessMiddleware`) so JWT/session snapshots cannot bypass revoked or pending DB state.
+
+**Gated mounts (`app.ts`):** `/v1/discover`, `/v1/users`, `/v1/activity-categories`, `/v1/activities`, `/v1/group-categories`, `/v1/groups`, `/v1/home`, `/v1/store`, `/v1/jobs`, `/v1/membership`.
+
+**`/v1/me` split:** Before gate — `GET /v1/me/onboarding/status`, `/v1/me/verification/*`, account/profile read + patch (eligibility rules), password change, session list/revoke, account-deletion impact. After gate — settings overview, saved activities, interests/favorites/avatar, blocks, notifications, nested me routers (activities, social, groups, home feed, store, jobs, membership, email change).
+
+**Not gated:** `/v1/auth/*`, `/v1/consents/*`, `/v1/webhooks/*`, `/health/*`, `/v1/admin/*`, `GET /v1/interests` (catalog; requires bearer + account access only).
+
+**403 body (main-app denial):** `error.code` = `ONBOARDING_REQUIRED` (pending pipeline) or `ACCOUNT_NOT_ACTIVATED` (admin rejected / denied); includes `nextAction`, `onboardingPhase`, `effectiveApplicationAccess`, `homeAccessAllowed: false`.
+
+**Source:** `src/modules/policy/home-access-enforcement.ts`, `src/common/middleware/require-home-access.ts`, `src/app.ts`, `src/modules/me/me.routes.ts`
+
+**Task 022D acceptance:** Figma auth flow parity matrix `docs/product/FIGMA_AUTH_FLOW_PARITY_TASK022.md`; E2E evidence `tests/integration/auth-flow-e2e.task022d.integration.test.ts`; report `docs/plans/TASK_022D_AUTH_FLOW_ACCEPTANCE_REPORT.md`.
+
 ---
 
 ## PLANNED (not implemented)
@@ -978,6 +1065,9 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | 2026-10-27 | Task 015 — settings overview, saved activities, email change (DEV_ONLY), session inventory, deletion impact (non-destructive) |
 | 2026-10-27 | Task 014 — `/v1/store/*`, `/v1/me/store/*`, `/v1/jobs/*`, `/v1/me/saved-jobs`, job applications, job drafts |
 | 2026-10-27 | Task 013 — `/v1/home`, `/v1/me/community-feed`, in-app notifications inbox + event hooks |
+| 2026-10-28 | Task 023C — device tokens + notification preferences (`PUSH_ENABLED` off); 023B socket ACL hardening |
+| 2026-10-28 | Task 023B — Socket.IO messaging realtime (REST-triggered events; single-instance default) |
+| 2026-10-28 | Task 023A — `GET /v1/me/messaging/summary` header/message badge aggregates |
 | 2026-10-27 | Task 011 — follow/unfollow, wave, message requests, 1:1 text conversations, unread/read watermarks |
 | 2026-10-27 | Task 010 — activities catalog, host draft/publish/cancel, discovery, RSVP/waitlist, meeting details, KYC enforcement |
 | 2026-10-27 | Task 009 — discovery list, public profile/avatar, user blocks (D-03/D-04 MVP) |

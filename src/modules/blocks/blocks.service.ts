@@ -9,6 +9,7 @@ import { canBrowseDiscovery } from "../policy/public-profile-policy.js";
 import { toPolicyActor } from "../policy/account-policy.js";
 import type { blockUserBodySchema } from "./blocks.validation.js";
 import type { z } from "zod";
+import { onUserBlockEstablished } from "../messaging-realtime/messaging-realtime.lifecycle.js";
 
 export type BlockListItemDto = {
   targetUserId: string;
@@ -49,6 +50,7 @@ export class BlocksService {
       create: { blockerId: user.id, blockedId: targetUserId },
       update: {},
     });
+    void onUserBlockEstablished(this.db, user.id, targetUserId).catch(() => undefined);
   }
 
   async unblockUser(user: User, targetUserId: string): Promise<void> {
