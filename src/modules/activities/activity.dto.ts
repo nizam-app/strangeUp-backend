@@ -1,9 +1,11 @@
 import type {
   ActivityAudience,
+  ActivityJoinMode,
   ActivityMode,
   ActivityParticipationState,
   ActivityStatus,
 } from "../../../generated/prisma/client.js";
+import { toParticipationPresentation } from "./activity-join-policy.js";
 import type { PublicProfilePreviewDto } from "../discovery/public-profile.dto.js";
 import { toPublicProfilePreview } from "../discovery/public-profile.dto.js";
 import {
@@ -21,6 +23,23 @@ export type ActivityHostPreviewDto = PublicProfilePreviewDto;
 export type MyParticipationDto = {
   state: Exclude<ActivityParticipationState, "CANCELLED">;
   waitlistPosition: number | null;
+  joinMode: ActivityJoinMode;
+  hostApprovedAt: string | null;
+  requestedAt: string;
+  participationStatus:
+    | "AUTO_CONFIRMED"
+    | "AUTO_WAITLISTED"
+    | "APPROVAL_PENDING"
+    | "APPROVAL_DECLINED"
+    | "APPROVAL_CONFIRMED"
+    | "APPROVAL_WAITLISTED";
+};
+
+export type ActivityHostParticipationSummaryDto = {
+  pendingRequestCount: number;
+  confirmedSeatCount: number;
+  approvedWaitlistedCount: number;
+  declinedRequestCount: number;
 };
 
 export type PublicActivityCardDto = {
@@ -40,6 +59,7 @@ export type PublicActivityCardDto = {
   confirmedCount: number;
   spotsLeft: number;
   waitlistEnabled: boolean;
+  joinMode: ActivityJoinMode;
   host: ActivityHostPreviewDto;
 };
 
@@ -63,6 +83,7 @@ export type HostActivityDto = PublicActivityDetailDto & {
   meetingInstructions: string | null;
   virtualMeetingDetails: string | null;
   waitlistedCount: number;
+  hostParticipationSummary: ActivityHostParticipationSummaryDto;
   publishedAt: string | null;
   cancelledAt: string | null;
 };
@@ -70,6 +91,22 @@ export type HostActivityDto = PublicActivityDetailDto & {
 export type MyActivityRsvpDto = {
   activity: PublicActivityCardDto;
   myParticipation: MyParticipationDto;
+};
+
+/** Task 027B — self-only My Activities inventory row (no meeting instructions). */
+export type MyActivityInventoryItemDto = {
+  relationship: "HOSTING" | "JOINED" | "WAITLISTED" | "PENDING_APPROVAL";
+  activity: PublicActivityCardDto;
+  myParticipation: MyParticipationDto | null;
+  hostWaitlistedCount: number | null;
+};
+
+export type MyActivityInventoryCountsDto = {
+  upcoming: number;
+  hosting: number;
+  joined: number;
+  waitlisted: number;
+  pendingApproval: number;
 };
 
 export type ActivityHostSource = {
@@ -101,6 +138,7 @@ export type PublicActivitySource = {
   capacity: number;
   confirmedCount: number;
   waitlistEnabled: boolean;
+  joinMode: ActivityJoinMode;
   host: ActivityHostSource;
 };
 
@@ -172,6 +210,7 @@ export function toPublicActivityCard(
     confirmedCount: source.confirmedCount,
     spotsLeft: spotsLeft(source.capacity, source.confirmedCount),
     waitlistEnabled: source.waitlistEnabled,
+    joinMode: source.joinMode,
     host: hostPreview,
   };
 }
@@ -214,6 +253,7 @@ export function toHostActivityDto(
     meetingInstructions: string | null;
     virtualMeetingDetails: string | null;
     waitlistedCount: number;
+    hostParticipationSummary: ActivityHostParticipationSummaryDto;
     publishedAt: Date | null;
     cancelledAt: Date | null;
     myParticipation: MyParticipationDto | null;
@@ -224,21 +264,38 @@ export function toHostActivityDto(
     meetingInstructions: extras.meetingInstructions,
     virtualMeetingDetails: extras.virtualMeetingDetails,
     waitlistedCount: extras.waitlistedCount,
+    hostParticipationSummary: extras.hostParticipationSummary,
     publishedAt: extras.publishedAt?.toISOString() ?? null,
     cancelledAt: extras.cancelledAt?.toISOString() ?? null,
   };
 }
 
-export function toMyParticipationDto(row: {
-  state: ActivityParticipationState;
-  waitlistPosition: number | null;
-}): MyParticipationDto | null {
-  if (row.state === "CANCELLED") {
+export function toMyParticipationDto(
+  row: {
+    state: ActivityParticipationState;
+    waitlistPosition: number | null;
+    hostApprovedAt: Date | null;
+    joinedAt: Date;
+  },
+  joinMode: ActivityJoinMode,
+): MyParticipationDto | null {
+  const presentation = toParticipationPresentation({
+    joinMode,
+    state: row.state,
+    waitlistPosition: row.waitlistPosition,
+    hostApprovedAt: row.hostApprovedAt,
+    joinedAt: row.joinedAt,
+  });
+  if (!presentation) {
     return null;
   }
   return {
-    state: row.state,
-    waitlistPosition: row.state === "WAITLISTED" ? row.waitlistPosition : null,
+    state: presentation.state,
+    waitlistPosition: presentation.waitlistPosition,
+    joinMode: presentation.joinMode,
+    hostApprovedAt: presentation.hostApprovedAt,
+    requestedAt: presentation.requestedAt,
+    participationStatus: presentation.participationStatus,
   };
 }
 

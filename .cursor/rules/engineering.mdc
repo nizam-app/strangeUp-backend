@@ -11,13 +11,13 @@ alwaysApply: true
 
 ## Before coding
 
-- Inspect existing repo and docs (`AGENTS.md`, `docs/plans/STATUS.md`, `docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`, approved ADRs including ADR-004).
+- Inspect existing repo and docs (`AGENTS.md`, `docs/plans/STATUS.md`, `docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`, `docs/plans/MASTER_DEFERRED_WORK_QUEUE.md`, approved ADRs including ADR-004).
 - Figma/PDFs: evidence for **backend** behavior only; unresolved product flows must NOT be invented.
 - Deferred integrations (Stripe, KYC vendor, production ESP, OAuth/phone OTP) stay documented and unimplemented until explicitly authorized.
 
 ## Backend feature checklist
 
-Figma screens → approved rules → schema/policies → routes/services → tests (unit, integration, authz, negative paths) → `CURRENT_APIS.md` + `FLUTTER_DEVELOPER_HANDOFF.md` + OpenAPI + `STATUS.md` + `ACTIVE_SCOPE_AND_DEFERRALS.md`.
+Figma screens → approved rules → schema/policies → routes/services → tests (unit, integration, authz, negative paths) → `CURRENT_APIS.md` + `FLUTTER_DEVELOPER_HANDOFF.md` + OpenAPI + `STATUS.md` + `ACTIVE_SCOPE_AND_DEFERRALS.md` + `MASTER_DEFERRED_WORK_QUEUE.md`.
 
 ## Stack and structure
 

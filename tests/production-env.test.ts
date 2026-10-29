@@ -54,6 +54,15 @@ describe("production environment safeguards (Task 018)", () => {
     ).toThrow(/GROUP_COMMUNITY_INTERACTIVE_ENABLED/);
   });
 
+  it("rejects store catalog management flag in production", () => {
+    expect(() =>
+      loadEnv({
+        ...PRODUCTION_BASE,
+        STORE_CATALOG_MANAGEMENT_ENABLED: "true",
+      }),
+    ).toThrow(/STORE_CATALOG_MANAGEMENT_ENABLED/);
+  });
+
   it("rejects KYC provider enablement without vendor integration", () => {
     expect(() =>
       loadEnv({

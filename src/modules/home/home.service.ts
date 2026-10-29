@@ -26,6 +26,7 @@ import {
   hostPreviewForViewer,
   toPublicActivitySource,
 } from "../activities/activity-mapper.js";
+import { isDiscoverableActivityHost } from "../activities/activity-host-eligibility.js";
 import { isDiscoverableStatus } from "../activities/activity-policy.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
@@ -51,19 +52,24 @@ export class HomeService {
   private readonly discoveryService: DiscoveryService;
   private readonly communityFeedService: CommunityFeedService;
   private readonly notificationService: NotificationService;
+  private readonly activityKyc: {
+    isProduction: boolean;
+    kycProviderEnabled: boolean;
+  };
 
   constructor(
     private readonly db: DatabaseClient,
     env: AppEnv,
   ) {
-    const kyc = {
+    this.activityKyc = {
       isProduction: env.isProduction,
       kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
     };
+    const kyc = this.activityKyc;
     const mediaStorages = createAppMediaStorages(env);
     this.groupService = new GroupService(db, mediaStorages.groupCover);
     this.activityService = new ActivityService(db, mediaStorages.activityCover, kyc);
-    this.discoveryService = new DiscoveryService(db);
+    this.discoveryService = new DiscoveryService(db, env);
     this.communityFeedService = new CommunityFeedService(db, env);
     this.notificationService = new NotificationService(db);
   }
@@ -156,6 +162,9 @@ export class HomeService {
       }
       const blocked = await isBlockedEitherDirection(this.db, viewer.id, activity.hostId);
       if (blocked) {
+        continue;
+      }
+      if (!isDiscoverableActivityHost(activity.host, this.activityKyc)) {
         continue;
       }
       seen.add(activity.id);

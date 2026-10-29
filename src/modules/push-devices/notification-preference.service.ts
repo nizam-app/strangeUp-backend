@@ -12,6 +12,7 @@ export type NotificationPreferenceDto = {
   groupMembershipEnabled: boolean;
   groupChatEnabled: boolean;
   activityUpdatesEnabled: boolean;
+  meetupInvitesEnabled: boolean;
   marketingEnabled: boolean;
   deliveryStatus: "PUSH_DISABLED" | "PUSH_ENABLED";
   updatedAt: string;
@@ -24,6 +25,7 @@ const defaultPreference = {
   groupMembershipEnabled: true,
   groupChatEnabled: false,
   activityUpdatesEnabled: true,
+  meetupInvitesEnabled: true,
   marketingEnabled: false,
 };
 
@@ -56,6 +58,7 @@ export class NotificationPreferenceService {
       groupMembershipEnabled: row.groupMembershipEnabled,
       groupChatEnabled: row.groupChatEnabled,
       activityUpdatesEnabled: row.activityUpdatesEnabled,
+      meetupInvitesEnabled: row.meetupInvitesEnabled,
       marketingEnabled: row.marketingEnabled,
       deliveryStatus: this.deliveryStatus(),
       updatedAt: row.updatedAt.toISOString(),
@@ -83,6 +86,7 @@ export class NotificationPreferenceService {
       groupMembershipEnabled: row.groupMembershipEnabled,
       groupChatEnabled: row.groupChatEnabled,
       activityUpdatesEnabled: row.activityUpdatesEnabled,
+      meetupInvitesEnabled: row.meetupInvitesEnabled,
       marketingEnabled: row.marketingEnabled,
       deliveryStatus: this.deliveryStatus(),
       updatedAt: row.updatedAt.toISOString(),

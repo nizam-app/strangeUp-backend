@@ -1,7 +1,7 @@
 import type { PlatformStaffRole } from "../../../generated/prisma/client.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import type { AppEnv } from "../../config/env.js";
-import { IDENTITY_REVIEWER_ROLE } from "./platform-staff-policy.js";
+import { IDENTITY_REVIEWER_ROLE, STORE_CATALOG_MANAGER_ROLE } from "./platform-staff-policy.js";
 
 /**
  * Non-production optional bootstrap: grants IDENTITY_REVIEWER to configured user IDs.
@@ -24,6 +24,18 @@ export async function syncPlatformStaffBootstrapGrants(
     .filter(Boolean);
   for (const userId of userIds) {
     await upsertStaffGrant(db, userId, IDENTITY_REVIEWER_ROLE, null);
+  }
+
+  const catalogRaw = env.PLATFORM_STORE_CATALOG_MANAGER_USER_IDS?.trim();
+  if (!catalogRaw) {
+    return;
+  }
+  const catalogUserIds = catalogRaw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const userId of catalogUserIds) {
+    await upsertStaffGrant(db, userId, STORE_CATALOG_MANAGER_ROLE, null);
   }
 }
 

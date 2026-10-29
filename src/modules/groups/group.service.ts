@@ -9,6 +9,7 @@ import {
   assertCanEditCore,
   assertCanEditRestricted,
   assertGroupAccess,
+  assertGroupActiveForMutation,
   countActiveMembers,
   groupPublicSelect,
   loadMembership,
@@ -20,7 +21,7 @@ import {
   canNonMemberSeeCover,
   isDiscoverableGroupStatus,
 } from "./group-policy.js";
-import { buildDiscoverableGroupsWhere } from "./group-query.js";
+import { buildDiscoverableGroupsWhere, buildMyMembershipWhere } from "./group-query.js";
 import {
   toGroupSummaryDto,
   type GroupCategoryDto,
@@ -155,9 +156,7 @@ export class GroupService {
 
     const rows = await this.db.communityMembership.findMany({
       where: {
-        userId: viewer.id,
-        status: query.status ?? { in: ["ACTIVE", "PENDING"] },
-        ...(query.role ? { role: query.role } : {}),
+        ...buildMyMembershipWhere({ userId: viewer.id, query }),
         ...(cursor
           ? {
               OR: [
@@ -290,6 +289,7 @@ export class GroupService {
       if (!group) {
         throw groupNotFound();
       }
+      assertGroupActiveForMutation(group.status);
 
       if (input.memberCapacity !== undefined && input.memberCapacity !== null) {
         const activeCount = await countActiveMembers(tx, groupId);
@@ -352,11 +352,12 @@ export class GroupService {
     assertCanEditCore(membership?.status === "ACTIVE" ? membership.role : null);
     const group = await this.db.communityGroup.findUnique({
       where: { id: groupId },
-      select: { id: true, coverStorageKey: true },
+      select: { id: true, coverStorageKey: true, status: true },
     });
     if (!group) {
       throw groupNotFound();
     }
+    assertGroupActiveForMutation(group.status);
 
     const processed = await processAvatarUpload(file.buffer);
     const stored = await this.coverStorage.save(groupId, processed.buffer, processed.contentType);
@@ -390,11 +391,12 @@ export class GroupService {
     assertCanEditCore(membership?.status === "ACTIVE" ? membership.role : null);
     const group = await this.db.communityGroup.findUnique({
       where: { id: groupId },
-      select: { coverStorageKey: true },
+      select: { coverStorageKey: true, status: true },
     });
     if (!group) {
       throw groupNotFound();
     }
+    assertGroupActiveForMutation(group.status);
     if (group.coverStorageKey) {
       await this.coverStorage
         .deleteByStorageKey(group.coverStorageKey, groupId)

@@ -16,14 +16,14 @@ For every backend feature:
 3. Design **database models**, relationships, validations, and permissions.
 4. Implement **production-oriented** APIs and services.
 5. Add **unit, integration, authorization, and negative-path** tests.
-6. Update **`CURRENT_APIS.md`**, **`FLUTTER_DEVELOPER_HANDOFF.md`**, relevant OpenAPI, **`docs/plans/STATUS.md`**, and **`docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`** in the same change set as route work.
+6. Update **`CURRENT_APIS.md`**, **`FLUTTER_DEVELOPER_HANDOFF.md`**, relevant OpenAPI, **`docs/plans/STATUS.md`**, **`docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`**, and **`docs/plans/MASTER_DEFERRED_WORK_QUEUE.md`** in the same change set as route work (or any change that adds, removes, or reclassifies deferred, partial, owner-blocked, or release-blocking scope).
 7. Provide a complete **API integration contract** for the separate Flutter developer (no Flutter implementation in this repo).
 
 ## Product and architecture
 
 - Product spec is draft until the owner explicitly accepts the decision register. PDF/Figma UI screens are **evidence of visual intent**, not permission to invent backend policy.
 - Architecture: modular monolith with limited module coupling and centrally enforced auth/privacy/blocks/entitlements.
-- Read `docs/plans/STATUS.md`, `docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`, `docs/product/OPEN_QUESTIONS.md`, `docs/product/PRD_DRAFT.md`, `docs/decisions/ADR-004-identity-phase1-owner-decisions.md`, and relevant ADRs before significant work.
+- Read `docs/plans/STATUS.md`, `docs/plans/ACTIVE_SCOPE_AND_DEFERRALS.md`, **`docs/plans/MASTER_DEFERRED_WORK_QUEUE.md`**, `docs/product/OPEN_QUESTIONS.md`, `docs/product/PRD_DRAFT.md`, `docs/decisions/ADR-004-identity-phase1-owner-decisions.md`, and relevant ADRs before significant work.
 - Preserve approved requirements and security gates (KYC-01/03/05, KYC-ENF-01..05, D-01, D-02, D-02-AUTH, D-09). Keep **Stripe**, **KYC vendor integration**, and other explicitly deferred integrations documented — do not implement them without authorization.
 
 ## API documentation (mandatory)

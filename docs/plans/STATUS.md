@@ -1,3 +1,297 @@
+# StrangeUp Engineering Status (as of 2026-10-29, Task 030 complete)
+
+**Task 030 (Backend completion & Admin Panel readiness):** **COMPLETE (audit only)** — no code, migrations, or Admin UI. Deliverables: `TASK_030_BACKEND_COMPLETION_AUDIT_REPORT.md`, `ADMIN_PANEL_API_READINESS_MATRIX.md`, `BACKEND_REMAINING_WORK_CHECKLIST.md` (includes proposed **Task 031** Admin Panel phases). **Finding:** Flutter/staging APIs are broadly **IMPLEMENTED** within deferred flags; **production release not ready** (MDWQ-0099–0103, KYC/email/media). Task **022B** identity-review REST is **ready for a separate React Admin Panel**; gaps: global user search, suspend REST, request-more-info, full audit pagination. **`strangeup_dev`** missing migrations **028C+028G** (**MDWQ-0310**); **`strangeup_test`** current (**22/22**). **STOP:** await owner review before **Task 031** or backend P0/P1 implementation.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 029H complete)
+
+**Task 029 (Groups & Jobs):** Backend **COMPLETE WITHIN APPROVED SCOPE** — see `TASK_029H_FINAL_VERIFICATION_REPORT.md` and `FIGMA_GROUPS_JOBS_PARITY_TASK029H_FINAL.md`. **Not** full Figma parity, Jobs publish/employer delivery, or production readiness. Phases **029E** and **029G** **SKIPPED** for this closure (MDWQ rows **open**).
+
+---
+
+## Task 029H (Phase H — Final verification & closure)
+
+- **Scope:** Consolidated parity matrix; bounded Neon regression (groups 029B–D, jobs 029F); doc reconciliation.
+- **Tests:** typecheck/lint/build pass; unit **285/285**; groups integration **20/20**; jobs integration **8/8** on `strangeup_test`.
+- **Harness:** T029F-P01 unique search tokens (shared Neon isolation — not an app defect).
+- **OPEN:** **MDWQ-0910**, **MDWQ-0911**; jobs **0901**, **0902**, **0903**, **0905**, **0906**; group **0505**, **0912–0915**.
+- **STOP:** Task 029 closed; Task 030 audit complete (see header).
+
+---
+
+## Task 029F (Phase F — Jobs discovery & saved jobs)
+
+- **Scope:** Screen 23 read/save parity vs Task 014; no publish, employer delivery, or 029G application lifecycle changes.
+- **Fix:** `GET /v1/jobs` — combine `q` and `cursor` with **AND** (`job-query.ts`); previously cursor overwrote search.
+- **Tests:** typecheck/lint/build pass; unit **285/285**; jobs integration **8/8** on `strangeup_test` (T029F-P01–P04 + Task 014 regressions).
+- **Docs:** `TASK_029F_JOBS_DISCOVERY_SAVED_REPORT.md`, `FIGMA_GROUPS_JOBS_PARITY_TASK029F.md`.
+- **029E:** **SKIPPED/DEFERRED** (interactive group features — owner scope).
+- **OPEN:** **MDWQ-0910**, **MDWQ-0911**; jobs **MDWQ-0901**, **0902**, **0903**, **0905**, **0906**.
+- **STOP:** **029G not started.**
+
+---
+
+## Task 029D (Phase D — Membership lifecycle & authorization)
+
+- **Scope:** Join/approve/decline/leave/roles/capacity/archived guards; Task 022/023; 029B inventory accuracy.
+- **Fixes:** Block decline/remove/role/transfer/re-archive on **ARCHIVED** groups; `onUserLeftGroup` after moderator **remove**.
+- **Tests:** unit **283/283**; groups integration **20/20** on `strangeup_test` (T029D-P01–P04 + 029B/C regressions).
+- **Docs:** `TASK_029D_GROUPS_MEMBERSHIP_LIFECYCLE_REPORT.md`, `FIGMA_GROUPS_JOBS_PARITY_TASK029D.md`.
+- **OPEN:** MDWQ-0910, MDWQ-0911, MDWQ-0505 (invitations).
+- **STOP:** **029E SKIPPED/DEFERRED** (owner scope); **029F** closed this slice.
+
+---
+
+## Task 029C (Phase C — Create & manage group)
+
+- **Scope:** Audit Screen 1 & 2 PDFs vs Task 012 create/manage; preserve 029B, flags, billing deferral.
+- **Fix:** Block `PATCH` and cover mutations on **ARCHIVED** groups (`assertGroupActiveForMutation`).
+- **Tests:** unit **283/283**; groups integration **16/16** on `strangeup_test` (T029C-P01–P04).
+- **Parity:** `FIGMA_GROUPS_JOBS_PARITY_TASK029C.md`, `TASK_029C_GROUPS_CREATE_MANAGE_REPORT.md`.
+- **OPEN:** MDWQ-0910, MDWQ-0911; unsupported Figma stats/categories documented.
+- **STOP:** **029D not started.**
+
+---
+
+## Task 029B (Phase B — Groups read inventory)
+
+- **Scope:** Discovery, detail, `GET /v1/me/groups` inventory views; preserve Task 012 policies, 022 gate, interactive flag off.
+- **Change:** Added `view` (`all` \| `joined` \| `managed` \| `pending`) and `q` on **`GET /v1/me/groups`** (same route; managed tab in one paginated query).
+- **Figma:** My Groups screen **UNVERIFIED** — `Html → Body.pdf` still duplicate (**MDWQ-0910 OPEN**); Group Details authority **MDWQ-0911 OPEN**.
+- **Tests:** typecheck/lint/build pass; unit **283/283**; groups integration **12/12** on `strangeup_test` (T029B-P01–P03).
+- **Report:** `TASK_029B_GROUPS_READ_INVENTORY_REPORT.md`.
+- **STOP:** **029C not started.**
+
+---
+
+## Task 029A (Phase A — Groups & Jobs read-only source audit)
+
+- **Deliverables:** `TASK_029A_GROUPS_JOBS_SOURCE_AUDIT_REPORT.md`, `FIGMA_GROUPS_JOBS_PARITY_TASK029A.md`; MDWQ **0910–0915**, **0905–0906**.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 027I complete)
+
+**Task 027 (After membership activities):** Backend **COMPLETE WITHIN APPROVED SCOPE** — see `TASK_027I_FINAL_VERIFICATION_REPORT.md` and `FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027I_FINAL.md`. Phases **027G** (chat/follow/cutoff/catalog) and **027H** (ACT-NOTIFY) **SKIPPED** — MDWQ rows retained. **Not** full Figma parity or production readiness.
+
+## Task 027I (Phase I — Final verification & closure)
+
+- **Parity:** `FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027I_FINAL.md` (Screen 12, My Activities, Create, Join Requests).
+- **Tests:** typecheck/lint/build pass; unit **279/279**; bounded Neon **25/25** (027B–F + T025C-P01/P02 on `strangeup_test`).
+- **Harness:** T027F-04 username collision fix (integration isolation only).
+- **Queue:** MDWQ-0718 (saved count vs visible list), MDWQ-0719 (declined reapply policy).
+- **STOP:** Task 027 closed within approved scope; no 027G/H implementation.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 028H complete)
+
+**Task 028 (Discover & personal meetup):** Backend **READY_FOR_OWNER_REVIEW** — see `TASK_028H_FINAL_VERIFICATION_REPORT.md`. `capabilities.meetupInvites` remains **DEFERRED** until owner authorizes LIVE.
+
+## Task 028H (Phase H — Final verification)
+
+- **Parity:** `FIGMA_DISCOVER_MEETUP_PARITY_TASK028H_FINAL.md`
+- **Tests:** `meetup-invite-028h-final.integration.test.ts` (lifecycle, security, rollback, regressions)
+- **Owner:** `TASK_028H_OWNER_SIGNOFF_CHECKLIST.md`
+- **Migrations:** strangeup_test current; strangeup_dev pending 028C+028G (report only)
+- **STOP:** Task 028 backend complete; no further flow started.
+
+---
+
+## Task 028G (Phase G — Meetup notifications)
+
+- **Implemented:** Four `UserNotificationType` values; `meetupInvitesEnabled` preference; emitter on create + successful accept/decline/withdraw (transactional).
+- **Migration:** `20261029180000_task028g_meetup_notifications` (applied **strangeup_test**).
+- **Tests:** `meetup-invite-notifications.test.ts`; `meetup-invite-028g-notifications.integration.test.ts` (**9/9** Neon).
+- **Report:** `TASK_028G_PERSONAL_MEETUP_NOTIFICATIONS_REPORT.md`.
+- **Capability:** `settings.capabilities.meetupInvites` still **DEFERRED**.
+- **STOP:** 028H not started; 028F reschedule deferred.
+
+---
+
+## Task 028E (Phase E — Accept / decline / withdraw)
+
+- **APIs:** `POST /v1/meetup-invites/:inviteId/accept|decline|withdraw` (Task 022 + participant eligibility; recipient KYC on accept).
+- **Integrity:** Lazy expiry before transition; row `FOR UPDATE` + conditional `PENDING` update; idempotent terminal **200** / conflict **409**.
+- **Tests:** `tests/integration/meetup-invite-028e.integration.test.ts` (Neon when `RUN_INTEGRATION=1`).
+- **Docs:** `CURRENT_APIS.md`, `FLUTTER_DEVELOPER_HANDOFF.md` §13A, `openapi/meetup-invites.yaml`, `TASK_028E_PERSONAL_MEETUP_MUTATIONS_REPORT.md`.
+- **Capability:** `settings.capabilities.meetupInvites` remains **DEFERRED** (owner sign-off).
+- **STOP:** 028F (reschedule) not started.
+
+---
+
+## Task 028D (Phase D — Meetup invite REST: create + inbox + detail)
+
+- **APIs:** `POST/GET /v1/meetup-invites`, `GET /v1/meetup-invites/:inviteId` (Task 022 gated).
+- **Fix:** Social target load includes activation fields for discoverability (025B-aligned).
+- **Tests:** integration **5/5** on `strangeup_test`; unit suite **276** pass.
+- **Docs:** `CURRENT_APIS.md`, `FLUTTER_DEVELOPER_HANDOFF.md` §13A, `openapi/meetup-invites.yaml`.
+- **STOP:** 028E completed in separate phase header above.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 028C complete)
+
+## Task 028C (Phase C — Personal meetup Prisma + policy foundation)
+
+- **Decision:** D-28 **Accepted (foundation scope)** — owner rules 2026-10-29.
+- **Schema:** `PersonalMeetupInvitation`, enums, partial unique pending pair, `ON DELETE RESTRICT`.
+- **Code:** `src/modules/meetup-invites/*` (state, validation, venue redaction, policy).
+- **Migration:** `20261029170000_task028c_personal_meetup_invitation` applied to **strangeup_test** only (this phase).
+- **Tests:** unit **276** pass; integration schema **2/2** on Neon test catalog.
+- **STOP:** 028D (HTTP) not started.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 028B complete)
+
+## Task 028B (Phase B — Personal meetup policy + API contract design)
+
+- **Delivered:** D-28 **PROPOSAL** (not owner-approved); state machine; Prisma/REST/DTO draft; owner checklist; Figma parity contract notes; MDWQ-0728.
+- **Gate:** Owner completes `TASK_028B_OWNER_DECISION_CHECKLIST.md` before **028C** (schema only).
+- **STOP:** 028C not started — no Prisma/routes/tests.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 028A complete)
+
+## Task 028A (Phase A — Discover & direct meetup read-only audit)
+
+- **Delivered:** Figma PDF hash verification; source audit of discovery, social, notifications, Prisma, routes; parity matrix; owner decision table; MDWQ-0720–0727.
+- **Finding:** Personal meetup invitations **not implemented** (no schema/routes); **separate from** Task 027E Activity host approval.
+- **Docs:** `TASK_028A_DISCOVER_MEETUP_AUDIT_REPORT.md`, `FIGMA_DISCOVER_MEETUP_PARITY_TASK028A.md`, `MASTER_DEFERRED_WORK_QUEUE.md` § Task 028.
+- **STOP:** 028B not started — owner `MEET-*` decisions required before contract design.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 027F complete)
+
+## Task 027F (Phase F — Attendee roster / ACT-ROSTER)
+
+- **Delivered:** `GET /v1/activities/:id/participants` — CONFIRMED-only, host or CONFIRMED participant, D-03 previews, preview cap 5.
+- **Verified:** see `TASK_027F_ATTENDEE_ROSTER_REPORT.md`.
+- **STOP (historical):** 027G+ deferred — see Task 027I closure header above.
+
+## Task 027E (Phase E — Hybrid join mode / host approval)
+
+- **Decision:** D-09 — `AUTO` \| `HOST_APPROVAL`; existing rows default `AUTO`.
+- **APIs:** join-requests list/approve/decline; RSVP PENDING path; inventory `view=pending`; `hostParticipationSummary`.
+- **Verified:** unit **255**; bounded Neon integration **10/10** (`activity-join-approval-027e` + security audit suite); see `TASK_027E_SECURITY_VERIFICATION_AUDIT.md`.
+
+## Task 027D (Phase D — Create/manage audit & saved-activities privacy)
+
+- **AUDIT:** Host create/edit/publish/cancel, capacity/schedule locks, cover boundaries — **no host-service defects**; regression tests added.
+- **FIX (MDWQ-0715):** Saved activities list/save apply Task 025C/027C host discoverability; rows preserved in DB.
+- **TESTS:** `saved-activity-visibility.test.ts`; `activity-manage-027d`, `saved-activities-privacy-027d` Neon (**6/6** with 027C regression).
+- **STOP:** 027E complete; 027F not started.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 027C complete)
+
+## Task 027C (Phase C — Activity privacy & data-integrity hardening)
+
+- **FIX:** Align non-host `GET …/meeting` and new `POST …/rsvp` with 025C host discoverability (detail/cover already 404).
+- **ADD:** `activity-public-visibility.ts` shared guard; participation history preserved on denial.
+- **TESTS:** `activity-public-visibility.test.ts`; `activity-privacy-027c.integration.test.ts` (**3/3** Neon); 027B inventory regression **2/2**.
+- **QUEUE:** MDWQ-**0715** (saved activities host filter — audit follow-up, not implemented).
+- **STOP:** 027D **not started**.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 027B complete)
+
+## Task 027B (Phase B — My Activities read-model)
+
+- **NEW API:** `GET /v1/me/activity-inventory?view=upcoming|hosting|joined|waitlisted|past` (+ optional `includeCounts`); public cards only.
+- **EXTENDED:** `GET /v1/me/activities?when=…`, `GET /v1/me/activity-rsvps?when=…&participation=…`.
+- **PRESERVED:** Instant RSVP/FIFO (AUTO default); Task 022 gate; D-08 billing deferred. *(027E added optional HOST_APPROVAL — see D-09.)*
+- **DOCS/OPENAPI:** `openapi/activities.yaml` 0.2.0, handoff §10, `TASK_027B_ACTIVITIES_POST_MEMBERSHIP_REPORT.md`.
+- **TESTS:** `activity-my-inventory.policy.test.ts`; `activity-inventory-027b.integration.test.ts` (**2/2** Neon bounded).
+- **STOP:** 027C **not started**.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-29, Task 027A complete)
+
+## Task 027A (Phase A — After Membership Activities source verification)
+
+- **SCOPE:** Documentation only — verified `design-reference/task027-activities-post-membership/` (5 PDFs + manifest); corrected **`Html → Body-1.pdf` = Join Requests** (not Body-4 / Settings).
+- **FINDINGS:** Instant RSVP + FIFO waitlist preserved; host approval queue **MISSING** (ACT-APPROVAL); My Activities **PARTIAL** (dual API merge); Join Requests shows **6/10 filled** vs **Approved (8)** — documented, not interpreted as rules.
+- **DOCS:** `FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027A.md`, `TASK_027A_ACTIVITIES_POST_MEMBERSHIP_REPORT.md`, `MASTER_DEFERRED_WORK_QUEUE.md` (MDWQ-0710–0713).
+- **PRESERVED:** Tasks 010, 022, 025C, 026A — no code/migration/test changes.
+- **STOP:** 027B **not started** (owner gate for optional read-model aggregation).
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 026A complete)
+
+## Task 026A (Phase A — Membership flow read-only contract)
+
+- **OWNER:** Defer **all** payment/subscription billing until further notice (`docs/decisions/D-08-owner-defer-billing-2026-10-28.md`).
+- **API:** `GET /v1/membership/plans`, `GET /v1/me/membership` — added versioned **`flow`** contract; benefit statuses **`AVAILABLE` / `NOT_CONFIGURED` / `DEFERRED` / `NOT_IMPLEMENTED`**; Club checkout/restore **DEFERRED**; **`BASIC`** effective tier only.
+- **PRESERVED:** Task 017 registry, Task 022 gate, no ledger/migrations, store checkout **UNAVAILABLE**, ADR-003 commerce separation.
+- **DOCS:** `FIGMA_MEMBERSHIP_PARITY_TASK026A.md`, `TASK_026A_MEMBERSHIP_FLOW_REPORT.md`, handoff §9/§19, `openapi/membership.yaml` 0.2.0.
+- **TESTS:** `membership-flow-contract.test.ts`; updated unit + `membership.integration.test.ts` (Neon gate).
+- **STOP:** 026B **not started**.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 024D complete)
+
+## Task 024D (Phase D — Fulfillment & order architecture foundations)
+
+- **DOMAIN:** `src/modules/physical-commerce/*` — ADR-003 separation from membership billing; no Prisma order models.
+- **API:** `GET /v1/store/fulfillment-policy`; cart `fulfillment` + `orderReadiness` (blocks `INSUFFICIENT_STOCK` for future orders).
+- **VALIDATION:** Future idempotency / address / fulfillment Zod schemas (no write routes).
+- **PRESERVED:** 024A–024C cart/pricing, checkout UNAVAILABLE, 024B admin, Task 022 gate.
+- **DOCS:** `STORE_FULFILLMENT_ORDER_ARCHITECTURE_TASK024D.md`, handoff §17.3.
+- **TESTS:** `physical-commerce-*` unit; `store-fulfillment-024d.integration.test.ts`.
+- **STOP:** 024E not started (payments/checkout).
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 024C complete)
+
+## Task 024C (Phase C — Pricing & Club benefits contract)
+
+- **MODEL:** `LIST_PRICE_PLUS_SINGLE_CART_DISCOUNT` — list `priceCents` authoritative; anti-double-discount policy documented; no member line prices + cart discount stacking.
+- **API:** `GET /v1/store/pricing-policy`; product `pricingHint` / `variants[].pricing`; cart `pricingQuote` — all membership/shipping/tax **`NOT_CONFIGURED`**, `totalDueCents=null`, checkout **UNAVAILABLE**.
+- **DOCS:** `docs/product/STORE_PRICING_CLUB_CONTRACT_TASK024C.md`, handoff §17.2, `CURRENT_APIS.md`, `openapi/store.yaml`.
+- **TESTS:** `store-pricing.test.ts`, `store-pricing-024c.integration.test.ts`.
+- **NO SCHEMA MIGRATION** — entitlements remain BASIC-only (Task 017).
+- **STOP:** 024D not started (fulfillment/orders architecture, still no payments).
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 024B complete)
+
+## Task 024B (Phase B — Trusted catalog ops & store media)
+
+- **IMPLEMENTED:** `/v1/admin/store-catalog/*` staff APIs (product/variant CRUD, publish/archive, stock concurrency, image ingest); role **`STORE_CATALOG_MANAGER`** (migration `20261028180000_store_catalog_manager_role`); **`STORE_CATALOG_MANAGEMENT_ENABLED`** default off + production fail-closed.
+- **MEDIA:** S3 namespace `store-product` + local `STORE_UPLOAD_DIR`; legacy local read fallback on S3 backend; buyer image route unchanged.
+- **PRESERVED:** Public store/cart/favorites (024A), Task 022 gate, checkout `UNAVAILABLE`, no badges/reviews/seller onboarding.
+- **DOCS:** `STORE_CATALOG_MANAGEMENT_TASK024B.md`, `PLATFORM_STAFF_PROVISIONING.md`, `CURRENT_APIS.md`, `openapi/admin.yaml`, handoff §17.1.
+- **TESTS:** `store-catalog-policy.test.ts`, `store-catalog-admin.validation.test.ts`, `store-catalog-024b.integration.test.ts`.
+- **NOT RUN:** Full Neon regression; no live S3 writes in CI (local media backend in integration).
+- **STOP:** 024C+ not started.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-28, Task 024A complete)
+
+## Task 024A (Phase A — Marketplace catalog & cart integrity)
+
+- **FIX:** Cart read path no longer treats insufficient-stock lines as fully payable in `subtotalCents`; added `linesSubtotalCents`, per-line `eligibleLineSubtotalCents` / `maxPurchasableQuantity` / `availabilityReason`, and cart `summary` flags.
+- **PRESERVED:** Server catalog prices, published-only writes, Task 022 home gate, cart isolation, mixed-currency rejection, `checkout.status=UNAVAILABLE`, no orders/reservations/payments/Club discounts.
+- **DOCS:** `docs/product/FIGMA_MARKETPLACE_PARITY_TASK024A.md`, `FLUTTER_DEVELOPER_HANDOFF.md` §17, `CURRENT_APIS.md`, `openapi/store.yaml`.
+- **TESTS:** `tests/store-cart.test.ts` (unit); `tests/integration/store-cart-024a.integration.test.ts` (Neon gate).
+- **NOT RUN:** Full Neon regression (release gate only).
+- **STOP:** 024B+ not started (operator catalog ingest, Club pricing, fulfillment, payments).
+
+---
+
 # StrangeUp Engineering Status (as of 2026-10-28, Task 023E complete)
 
 ## Task 023E (Phase E — Header Flow final parity audit)
@@ -115,6 +409,11 @@
 | **Task 011 — social connections & 1:1 messaging** | **IMPLEMENTED** | Migration `20261027190000_social_connections`; follow/wave/requests/1:1; no E2EE/presence; `FOLLOWERS_ONLY` still unpublished |
 | **Task 012 — groups & communities** | **VERIFIED (Neon)** | Migration `20261027200000_community_groups`; discovery, membership, posts, group chat, activity links; stories/polls/photo posts deferred |
 | **Task 013 — home, feed & notifications** | **VERIFIED (Neon)** | Migration `20261027210000_user_notifications`; `/v1/home`, `/v1/me/community-feed`, notification inbox + hooks; stories deferred |
+| **Task 025A — Main Flow Home / main-shell** | **VERIFIED (docs + bounded tests)** | Nine-PDF manifest; Screen 09 audit correction; `FIGMA_MAIN_FLOW_PARITY_TASK025A.md`; OpenAPI 403 fix; `main-flow-025a.integration.test.ts`; report `docs/plans/TASK_025A_MAIN_FLOW_HOME_REPORT.md` |
+| **Task 025B — Discover activation & Screen 09** | **VERIFIED (Neon)** | Discover targets require Task 022 activation; `discover-target-policy.ts`; T025B-P01/P02 + regression; `FIGMA_MAIN_FLOW_PARITY_TASK025B.md`; report `docs/plans/TASK_025B_DISCOVER_REPORT.md` |
+| **Task 025C — Activities / Screen 11** | **VERIFIED (Neon)** | Activated-host discovery filter; host-aware `q` search; T025C-P01/P02; `FIGMA_MAIN_FLOW_PARITY_TASK025C.md`; report `docs/plans/TASK_025C_ACTIVITIES_REPORT.md` |
+| **Task 025D — Profile / Settings / Edit details** | **VERIFIED (Neon)** | Legal name lock after KYC; `legalNameLocked` + `adminReviewStatus` on profile/settings; T025D-P01–P03; `FIGMA_MAIN_FLOW_PARITY_TASK025D.md`; report `docs/plans/TASK_025D_PROFILE_SETTINGS_REPORT.md` |
+| **Task 025E — Main Flow final parity & E2E** | **VERIFIED (Neon)** | Consolidated matrix `FIGMA_MAIN_FLOW_PARITY_TASK025E.md`; sticky legal-name lock (025E); T025E-E01–E03, T025E-S01–S02; report `docs/plans/TASK_025E_MAIN_FLOW_FINAL_REPORT.md`; **Task 025 complete** |
 | **Task 014 — store & jobs** | **VERIFIED (Neon)** | Migration `20261027220000_store_and_jobs`; `/v1/store/*`, `/v1/jobs/*`, self cart/favorites/applications; checkout & employer delivery deferred |
 | **Task 015 — settings & account lifecycle** | **VERIFIED (Neon)** | Migration `20261027230000_saved_activities_settings`; settings overview, saved activities, email change (DEV_ONLY), sessions, deletion impact; no destructive delete |
 | **Task 016 — stories, photo posts & polls** | **IMPLEMENTED (disabled default)** | Migration `20261027240000_community_stories_media_polls`; routes behind `GROUP_COMMUNITY_INTERACTIVE_ENABLED=false`; Home stories **DEFERRED**; D-06 provisional |
@@ -286,8 +585,9 @@
 
 ## Immediate next steps (backend only)
 
-1. **Next milestone (owner-gated):** **D-08 billing provider integration** after commercial sign-off **or** **D-06 activation** for Task 016 interactive media **or** MKT-03 checkout.
-2. Owner: **SET-03** account deletion retention/disposition; **SET-01** production email for change/reset/verify.
-3. Owner: D-06 group policy residual; authorize **Task 002B.3B** KYC foundation only when explicitly approved.
-4. Distributed rate limiting + production ESP before staging account-recovery UX at scale.
-5. Git logical commits / remote when owner approves.
+1. **Owner review Task 030** — approve **Task 031** (separate-repo Admin Panel MVP) and/or **P0** ops: **MDWQ-0310** dev migrations + staff `IDENTITY_REVIEWER` grants.
+2. **Staging E2E:** register → mock KYC → admin approve → Home (reuse 022D journey on staging URL).
+3. **Release track (P1):** MDWQ-0099 full Neon regression; MDWQ-0101–0103 consent/email/media; MDWQ-0302 prod KYC when authorized.
+4. **Product forks (owner-gated, unchanged):** D-08 billing **or** D-06 interactive media **or** MKT-03 checkout **or** 029G jobs — one scope at a time.
+5. Owner: **SET-03** deletion; **SET-01** prod email; **MDWQ-0910** Figma re-export.
+6. Git logical commits / remote when owner approves.

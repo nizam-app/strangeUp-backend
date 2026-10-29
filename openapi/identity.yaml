@@ -483,6 +483,9 @@ components:
         birthDate:
           type: string
           description: YYYY-MM-DD (read-only)
+        legalNameLocked:
+          type: boolean
+          description: When true, firstName/lastName PATCH is rejected (sticky after trusted KYC and/or prior staff APPROVED identity review — Tasks 025D/025E)
     ProfilePatchRequest:
       type: object
       additionalProperties: false

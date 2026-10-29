@@ -13,11 +13,9 @@ import {
   toPublicActivitySource,
   type ActivityWithRelations,
 } from "./activity-mapper.js";
-import {
-  canAccessMeetingDetails,
-  canBrowseActivities,
-  isDiscoverableStatus,
-} from "./activity-policy.js";
+import { canAccessMeetingDetails, canBrowseActivities } from "./activity-policy.js";
+import { isDiscoverableActivityHost } from "./activity-host-eligibility.js";
+import { assertPublicActivityDiscoverableToNonHostViewer } from "./activity-public-visibility.js";
 import { buildDiscoverableActivitiesWhere } from "./activity-query.js";
 import { ACTIVITY_LIST_DEFAULT_LIMIT, ACTIVITY_LIST_MAX_LIMIT } from "./activity.constants.js";
 import {
@@ -74,19 +72,22 @@ export class ActivityService {
       },
     });
 
-    const page = rows.slice(0, limit);
+    const now = new Date();
+    const eligible = rows.filter((row) => isDiscoverableActivityHost(row.host, this.kyc, now));
+    const visible = eligible.slice(0, limit);
+    const hasMore = eligible.length > limit || rows.length > limit;
     const viewerSnapshot = toDiscoverUserSnapshot(viewer);
-    const activities = page.map((row) => {
+    const activities = visible.map((row) => {
       const source = toPublicActivitySource(row, row._count.participations);
       const hostPreview = hostPreviewForViewer(viewerSnapshot, row, false);
       return toPublicActivityCard(source, hostPreview);
     });
 
     const nextCursor =
-      rows.length > limit && page.length > 0
+      hasMore && visible.length > 0
         ? encodeActivityStartsCursor({
-            startsAt: page[page.length - 1].startsAt.toISOString(),
-            id: page[page.length - 1].id,
+            startsAt: visible[visible.length - 1].startsAt.toISOString(),
+            id: visible[visible.length - 1].id,
           })
         : null;
 
@@ -101,13 +102,18 @@ export class ActivityService {
     });
     const mine = await this.db.activityParticipation.findUnique({
       where: { activityId_userId: { activityId, userId: viewer.id } },
-      select: { state: true, waitlistPosition: true },
+      select: {
+        state: true,
+        waitlistPosition: true,
+        hostApprovedAt: true,
+        joinedAt: true,
+      },
     });
     const viewerSnapshot = toDiscoverUserSnapshot(viewer);
     const blocked = await isBlockedEitherDirection(this.db, viewer.id, row.hostId);
     const source = toPublicActivitySource(row, confirmedCount);
     const hostPreview = hostPreviewForViewer(viewerSnapshot, row, blocked);
-    const myParticipation = mine ? toMyParticipationDto(mine) : null;
+    const myParticipation = mine ? toMyParticipationDto(mine, row.joinMode) : null;
     const meetingAvailable = canAccessMeetingDetails({
       isHost: viewer.id === row.hostId,
       participationState: mine?.state ?? null,
@@ -132,13 +138,13 @@ export class ActivityService {
     }
 
     const isHost = viewer.id === row.hostId;
-    if (!isHost && !isDiscoverableStatus(row.status)) {
-      throw activityNotFound();
-    }
-
     const blocked = await isBlockedEitherDirection(this.db, viewer.id, row.hostId);
-    if (blocked && !isHost) {
-      throw activityNotFound();
+
+    if (!isHost) {
+      if (blocked) {
+        throw activityNotFound();
+      }
+      assertPublicActivityDiscoverableToNonHostViewer(row, this.kyc);
     }
 
     const mine = await this.db.activityParticipation.findUnique({
@@ -194,9 +200,10 @@ export class ActivityService {
       where: { id: activityId },
       select: activityPublicSelect,
     });
-    if (!row || !isDiscoverableStatus(row.status) || row.audience !== "PUBLIC") {
+    if (!row) {
       throw activityNotFound();
     }
+    assertPublicActivityDiscoverableToNonHostViewer(row, this.kyc);
     const blocked = await isBlockedEitherDirection(this.db, viewer.id, row.hostId);
     if (blocked) {
       throw activityNotFound();

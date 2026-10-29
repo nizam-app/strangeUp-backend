@@ -1,5 +1,7 @@
 # Figma parity — Screen 18 Membership Plans (Task 017)
 
+**Superseded for flow/checkout by:** `FIGMA_MEMBERSHIP_PARITY_TASK026A.md` (Task 026A).
+
 **Source:** `Screen 18_ Membership Plans.pdf` (Phase 0 manifest). Figma copy is **illustrative**; not approved commerce terms.
 
 | Figma element | Backend (Task 017) | Status |

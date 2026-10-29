@@ -4,6 +4,7 @@ import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { assertJobsAccess } from "./job-access.js";
 import { decodeJobListingCursor, encodeJobListingCursor } from "./job-cursor.js";
 import { mapJobDetail, mapJobSummary } from "./job.mapper.js";
+import { buildPublishedJobListWhere } from "./job-query.js";
 import type { JobListQuery } from "./job.validation.js";
 
 function isListingOpen(status: string, closedAt: Date | null): boolean {
@@ -19,34 +20,7 @@ export class JobDiscoveryService {
     const cursor = query.cursor ? decodeJobListingCursor(query.cursor) : null;
 
     const rows = await this.db.jobListing.findMany({
-      where: {
-        status: "PUBLISHED",
-        closedAt: null,
-        ...(query.employmentType ? { employmentType: query.employmentType } : {}),
-        ...(query.workMode ? { workMode: query.workMode } : {}),
-        ...(query.city ? { locationCity: { equals: query.city, mode: "insensitive" } } : {}),
-        ...(query.region ? { locationRegion: { equals: query.region, mode: "insensitive" } } : {}),
-        ...(query.q
-          ? {
-              OR: [
-                { title: { contains: query.q, mode: "insensitive" } },
-                { description: { contains: query.q, mode: "insensitive" } },
-                { companyDisplayName: { contains: query.q, mode: "insensitive" } },
-              ],
-            }
-          : {}),
-        ...(cursor
-          ? {
-              OR: [
-                { createdAt: { lt: new Date(cursor.createdAt) } },
-                {
-                  createdAt: new Date(cursor.createdAt),
-                  id: { lt: cursor.id },
-                },
-              ],
-            }
-          : {}),
-      },
+      where: buildPublishedJobListWhere({ query, cursor }),
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit + 1,
     });

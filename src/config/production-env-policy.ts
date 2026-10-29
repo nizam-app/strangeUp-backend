@@ -52,6 +52,12 @@ export function assertProductionEnvironmentSafe(env: AppEnv, jwtSecret: string):
     );
   }
 
+  if (env.STORE_CATALOG_MANAGEMENT_ENABLED) {
+    violations.push(
+      "STORE_CATALOG_MANAGEMENT_ENABLED must remain false in production until MKT-01/02 owner approval",
+    );
+  }
+
   if (env.KYC_PROVIDER_ENABLED) {
     violations.push(
       "KYC_PROVIDER_ENABLED must remain false in production until an approved KYC vendor integration is configured",
@@ -89,6 +95,12 @@ export function assertProductionEnvironmentSafe(env: AppEnv, jwtSecret: string):
   if (env.PLATFORM_IDENTITY_REVIEWER_USER_IDS?.trim()) {
     violations.push(
       "PLATFORM_IDENTITY_REVIEWER_USER_IDS must not be set in production; use controlled staff provisioning",
+    );
+  }
+
+  if (env.PLATFORM_STORE_CATALOG_MANAGER_USER_IDS?.trim()) {
+    violations.push(
+      "PLATFORM_STORE_CATALOG_MANAGER_USER_IDS must not be set in production; use controlled staff provisioning",
     );
   }
 

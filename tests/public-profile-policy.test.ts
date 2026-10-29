@@ -4,6 +4,7 @@ import {
   canViewPublicProfile,
   canViewTargetVisibility,
   hasTrustedGovernmentIdKycApproved,
+  isDiscoverablePublicProfileTarget,
   isEligiblePublicProfileTarget,
 } from "../src/modules/policy/public-profile-policy.js";
 import { baseEligibleActor, mainAppActivatedActor } from "./helpers/activation-fixtures.js";
@@ -43,6 +44,22 @@ const kycApproved = {
   identityVerificationApprovedAt: new Date(),
 };
 
+const activatedTarget = {
+  userId: "33333333-3333-4333-8333-333333333333",
+  accountStatus: "ACTIVE" as const,
+  emailVerifiedAt: new Date(),
+  ageEligibilityStatus: "ELIGIBLE" as const,
+  suspendedAt: null,
+  deletedAt: null,
+  identityVerificationStatus: "APPROVED" as const,
+  identityVerificationApprovedAt: new Date(),
+  identityVerificationValidUntil: null,
+  identityVerificationRevokedAt: null,
+  identityVerificationSessionId: mainAppActivatedActor().identityVerificationSessionId,
+  adminReviewStatus: "APPROVED" as const,
+  adminReviewVerificationSessionId: mainAppActivatedActor().adminReviewVerificationSessionId,
+};
+
 describe("public profile policy (D-03/D-04)", () => {
   it("requires full account access to browse", () => {
     expect(
@@ -70,9 +87,10 @@ describe("public profile policy (D-03/D-04)", () => {
     expect(canViewTargetVisibility(kycApproved, "VERIFIED_USERS_ONLY")).toBe(true);
   });
 
-  it("requires activated viewer to browse another user's public profile", () => {
+  it("requires activated viewer and activated target for public profile reads", () => {
     expect(canViewPublicProfile(eligible, eligible, "EVERYONE", false)).toBe(false);
-    expect(canViewPublicProfile(activatedViewer, eligible, "EVERYONE", false)).toBe(true);
+    expect(canViewPublicProfile(activatedViewer, eligible, "EVERYONE", false)).toBe(false);
+    expect(canViewPublicProfile(activatedViewer, activatedTarget, "EVERYONE", false)).toBe(true);
   });
 
   it("denies blocked relationships and ineligible targets", () => {
@@ -96,7 +114,7 @@ describe("public profile policy (D-03/D-04)", () => {
     expect(
       canViewPublicProfile(
         activatedViewer,
-        { ...eligible, userId: "22222222-2222-4222-8222-222222222222" },
+        activatedTarget,
         "VERIFIED_USERS_ONLY",
         false,
       ),
@@ -105,6 +123,8 @@ describe("public profile policy (D-03/D-04)", () => {
 
   it("requires active verified eligible target", () => {
     expect(isEligiblePublicProfileTarget(eligible)).toBe(true);
+    expect(isDiscoverablePublicProfileTarget(eligible)).toBe(false);
+    expect(isDiscoverablePublicProfileTarget(activatedTarget)).toBe(true);
     expect(
       isEligiblePublicProfileTarget({
         ...eligible,

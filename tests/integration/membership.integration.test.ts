@@ -26,7 +26,7 @@ async function verifiedUser(
 
 const describeMembership = runIntegration ? describe : describe.skip;
 
-describeMembership("integration: membership plans & entitlements (Task 017)", () => {
+describeMembership("integration: membership plans & entitlements (Task 017 / 026A)", () => {
   let db: DatabaseClient;
   let app: ReturnType<typeof createApp>;
   const emailSender = createCapturingEmailSender();
@@ -73,6 +73,8 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
     expect(res.status).toBe(200);
     expect(res.body.data.billingConfigured).toBe(false);
     expect(res.body.data.commercialTermsApproved).toBe(false);
+    expect(res.body.data.flow.billing.status).toBe("DEFERRED");
+    expect(res.body.data.flow.checkout.purchasable).toBe(false);
     const club = res.body.data.plans.find((p: { planId: string }) => p.planId === "CLUB");
     expect(club.purchasable).toBe(false);
     expect(club.pricing).toBeNull();
@@ -88,6 +90,7 @@ describeMembership("integration: membership plans & entitlements (Task 017)", ()
     expect(res.body.data.canUpgrade).toBe(false);
     expect(res.body.data.subscription).toBeNull();
     expect(res.body.data.trial).toBeNull();
+    expect(res.body.data.flow.effectivePlan.defaultPlanId).toBe("BASIC");
   });
 
   it("T017-M03 settings overview includes membership summary", async () => {

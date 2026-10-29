@@ -24,7 +24,9 @@ import {
   isRealWorldActivityMode,
   requiresKycForPublish,
 } from "./activity-policy.js";
+import { activityStartsAtWhere } from "./activity-my-inventory.policy.js";
 import { ACTIVITY_LIST_DEFAULT_LIMIT, ACTIVITY_LIST_MAX_LIMIT } from "./activity.constants.js";
+import { loadHostParticipationSummary } from "./activity-host-participation-summary.js";
 import { toHostActivityDto } from "./activity.dto.js";
 import type {
   CreateActivityInput,
@@ -48,10 +50,12 @@ export class ActivityHostService {
       cursor = { createdAt: new Date(decoded.createdAt), id: decoded.id };
     }
 
+    const when = query.when ?? "all";
     const rows = await this.db.activity.findMany({
       where: {
         hostId: host.id,
         ...(query.status ? { status: query.status } : {}),
+        ...activityStartsAtWhere(when, new Date()),
         ...(cursor
           ? {
               OR: [
@@ -73,16 +77,20 @@ export class ActivityHostService {
       },
     });
 
-    const waitlistedCounts = await this.countWaitlisted(rows.map((row) => row.id));
     const page = rows.slice(0, limit);
+    const summaries = await Promise.all(
+      page.map((row) => loadHostParticipationSummary(this.db, row.id)),
+    );
     const viewerSnapshot = toDiscoverUserSnapshot(host);
-    const activities = page.map((row) => {
+    const activities = page.map((row, index) => {
       const source = toPublicActivitySource(row, row._count.participations);
       const hostPreview = hostPreviewForViewer(viewerSnapshot, row, false);
+      const summary = summaries[index];
       return toHostActivityDto(source, hostPreview, {
         meetingInstructions: row.meetingInstructions,
         virtualMeetingDetails: row.virtualMeetingDetails,
-        waitlistedCount: waitlistedCounts.get(row.id) ?? 0,
+        waitlistedCount: summary.approvedWaitlistedCount,
+        hostParticipationSummary: summary,
         publishedAt: row.publishedAt,
         cancelledAt: row.cancelledAt,
         myParticipation: null,
@@ -130,6 +138,7 @@ export class ActivityHostService {
         gearNotes: input.gearNotes ?? null,
         capacity: input.capacity,
         waitlistEnabled: input.waitlistEnabled ?? false,
+        joinMode: input.joinMode ?? "AUTO",
       },
       select: activityPublicSelect,
     });
@@ -144,8 +153,19 @@ export class ActivityHostService {
     }
 
     const participantCount = await this.db.activityParticipation.count({
-      where: { activityId, state: { in: ["CONFIRMED", "WAITLISTED"] } },
+      where: { activityId, state: { in: ["CONFIRMED", "WAITLISTED", "PENDING"] } },
     });
+    if (
+      existing.status === "PUBLISHED" &&
+      input.joinMode !== undefined &&
+      input.joinMode !== existing.joinMode
+    ) {
+      throw new AppError(
+        "CONFLICT",
+        "Join mode cannot change after an activity is published",
+        409,
+      );
+    }
     const confirmedCount = await this.db.activityParticipation.count({
       where: { activityId, state: "CONFIRMED" },
     });
@@ -216,6 +236,9 @@ export class ActivityHostService {
         ...(input.gearNotes !== undefined ? { gearNotes: input.gearNotes } : {}),
         ...(input.capacity !== undefined ? { capacity: input.capacity } : {}),
         ...(input.waitlistEnabled !== undefined ? { waitlistEnabled: input.waitlistEnabled } : {}),
+        ...(existing.status === "DRAFT" && input.joinMode !== undefined
+          ? { joinMode: input.joinMode }
+          : {}),
       },
       select: activityPublicSelect,
     });
@@ -265,7 +288,7 @@ export class ActivityHostService {
         data: { status: "CANCELLED", cancelledAt: now },
       });
       await tx.activityParticipation.updateMany({
-        where: { activityId, state: { in: ["CONFIRMED", "WAITLISTED"] } },
+        where: { activityId, state: { in: ["CONFIRMED", "WAITLISTED", "PENDING"] } },
         data: { state: "CANCELLED", waitlistPosition: null, cancelledAt: now },
       });
     });
@@ -394,36 +417,18 @@ export class ActivityHostService {
   }
 
   private async toHostDto(host: User, row: ActivityWithRelations) {
-    const [confirmedCount, waitlistedCount] = await Promise.all([
-      this.db.activityParticipation.count({ where: { activityId: row.id, state: "CONFIRMED" } }),
-      this.db.activityParticipation.count({ where: { activityId: row.id, state: "WAITLISTED" } }),
-    ]);
-    const source = toPublicActivitySource(row, confirmedCount);
+    const summary = await loadHostParticipationSummary(this.db, row.id);
+    const source = toPublicActivitySource(row, summary.confirmedSeatCount);
     const hostPreview = hostPreviewForViewer(toDiscoverUserSnapshot(host), row, false);
     return toHostActivityDto(source, hostPreview, {
       meetingInstructions: row.meetingInstructions,
       virtualMeetingDetails: row.virtualMeetingDetails,
-      waitlistedCount,
+      waitlistedCount: summary.approvedWaitlistedCount,
+      hostParticipationSummary: summary,
       publishedAt: row.publishedAt,
       cancelledAt: row.cancelledAt,
       myParticipation: null,
     });
-  }
-
-  private async countWaitlisted(activityIds: string[]): Promise<Map<string, number>> {
-    const map = new Map<string, number>();
-    if (activityIds.length === 0) {
-      return map;
-    }
-    const grouped = await this.db.activityParticipation.groupBy({
-      by: ["activityId"],
-      where: { activityId: { in: activityIds }, state: "WAITLISTED" },
-      _count: { _all: true },
-    });
-    for (const row of grouped) {
-      map.set(row.activityId, row._count._all);
-    }
-    return map;
   }
 
   private assertManage(host: User): void {

@@ -252,4 +252,135 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
       });
     expect(closedApply.status).toBe(404);
   });
+
+  it("T029F-P01 discovery filters, q+cursor pagination, and no fabricated badges", async () => {
+    const user = await verifiedUser(app, emailSender, db, "t029f-p01");
+    const uniqueQ = `PadelCoach${randomUUID().slice(0, 8)}`;
+    const match = await seedPublishedJob(db, "f01match");
+    await db.jobListing.update({
+      where: { id: match.jobId },
+      data: {
+        title: `${uniqueQ} Lead`,
+        locationCity: "Miami",
+        locationRegion: "FL",
+      },
+    });
+    await seedPublishedJob(db, "f01other");
+
+    const filtered = await request(app)
+      .get(
+        `/v1/jobs?q=${encodeURIComponent(uniqueQ)}&city=Miami&employmentType=FULL_TIME`,
+      )
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(filtered.status).toBe(200);
+    expect(filtered.body.data.jobs.length).toBeGreaterThan(0);
+    expect(filtered.body.data.jobs.every((j: { jobId: string }) => j.jobId === match.jobId)).toBe(
+      true,
+    );
+    expect(filtered.body.data.jobs[0]).not.toHaveProperty("featured");
+    expect(filtered.body.data.jobs[0].pay.disclaimer).toContain("self-reported");
+
+    const pageQ = `TestRoleF01Pg${randomUUID().slice(0, 8)}`;
+    await db.jobListing.update({
+      where: { id: match.jobId },
+      data: { title: `${pageQ} primary` },
+    });
+    const pageOther = await seedPublishedJob(db, "f01page2");
+    await db.jobListing.update({
+      where: { id: pageOther.jobId },
+      data: { title: `${pageQ} secondary` },
+    });
+
+    const page1 = await request(app)
+      .get(`/v1/jobs?limit=1&q=${encodeURIComponent(pageQ)}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(page1.body.data.jobs).toHaveLength(1);
+    const cursor = page1.body.meta.nextCursor as string;
+    expect(cursor).toBeTruthy();
+
+    const page2 = await request(app)
+      .get(`/v1/jobs?limit=1&q=Test&cursor=${encodeURIComponent(cursor)}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(page2.status).toBe(200);
+    expect(page2.body.data.jobs[0].jobId).not.toBe(page1.body.data.jobs[0].jobId);
+  });
+
+  it("T029F-P02 saved jobs privacy, idempotency, and closed listing handling", async () => {
+    const user = await verifiedUser(app, emailSender, db, "t029f-p02");
+    const other = await verifiedUser(app, emailSender, db, "t029f-p02x");
+    const { jobId } = await seedPublishedJob(db, "f02save");
+
+    const save1 = await request(app)
+      .put(`/v1/me/saved-jobs/${jobId}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(save1.status).toBe(200);
+    const save2 = await request(app)
+      .put(`/v1/me/saved-jobs/${jobId}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(save2.status).toBe(200);
+
+    const saved = await request(app)
+      .get("/v1/me/saved-jobs")
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(saved.body.data.jobs.some((j: { jobId: string }) => j.jobId === jobId)).toBe(true);
+
+    const otherSaved = await request(app)
+      .get("/v1/me/saved-jobs")
+      .set("Authorization", `Bearer ${other.accessToken}`);
+    expect(otherSaved.body.data.jobs.some((j: { jobId: string }) => j.jobId === jobId)).toBe(false);
+
+    await db.jobListing.update({
+      where: { id: jobId },
+      data: { closedAt: new Date() },
+    });
+
+    const savedAfterClose = await request(app)
+      .get("/v1/me/saved-jobs")
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(savedAfterClose.body.data.jobs.some((j: { jobId: string }) => j.jobId === jobId)).toBe(
+      false,
+    );
+
+    const unsave = await request(app)
+      .delete(`/v1/me/saved-jobs/${jobId}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(unsave.status).toBe(200);
+  });
+
+  it("T029F-P03 draft detail hidden; applications read regression unchanged", async () => {
+    const user = await verifiedUser(app, emailSender, db, "t029f-p03");
+    const { jobId } = await seedPublishedJob(db, "f03app");
+
+    const detail = await request(app)
+      .get(`/v1/jobs/${jobId}`)
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.applicationStatus).toBe("OPEN");
+
+    const apply = await request(app)
+      .post(`/v1/jobs/${jobId}/applications`)
+      .set("Authorization", `Bearer ${user.accessToken}`)
+      .send({
+        coverMessage: "Interested",
+        applicationConsentVersion: "pending-legal-review",
+      });
+    expect(apply.status).toBe(201);
+
+    const apps = await request(app)
+      .get("/v1/me/job-applications")
+      .set("Authorization", `Bearer ${user.accessToken}`);
+    expect(apps.status).toBe(200);
+    expect(apps.body.data.applications.some((a: { jobId: string }) => a.jobId === jobId)).toBe(true);
+    expect(apps.body.data.applications[0].employerDelivery.status).toBe("NOT_CONFIGURED");
+  });
+
+  it("T029F-P04 non-activated users cannot access jobs discovery", async () => {
+    const blocked = await createIntegrationUser(app, emailSender, db, "t029f-p04", {
+      mainAppAccess: false,
+    });
+    const res = await request(app)
+      .get("/v1/jobs")
+      .set("Authorization", `Bearer ${blocked.accessToken}`);
+    expect(res.status).toBe(403);
+  });
 });

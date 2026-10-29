@@ -27,6 +27,7 @@ import { createHomeRouter } from "./modules/home/home.routes.js";
 import { createStoreRouter } from "./modules/store/store.routes.js";
 import { createJobsRouter } from "./modules/jobs/job.routes.js";
 import { createMembershipRouter } from "./modules/membership/membership.routes.js";
+import { createMeetupInvitesRouter } from "./modules/meetup-invites/meetup-invite.routes.js";
 import { createAdminRouter } from "./modules/admin/admin.routes.js";
 import { createRequireHomeAccessMiddleware } from "./common/middleware/require-home-access.js";
 import { createAuthenticateMiddleware } from "./common/middleware/authenticate.js";
@@ -123,7 +124,7 @@ export function createApp(deps: CreateAppDeps): express.Application {
     };
 
     app.use("/v1/me", createMeRouter({ db, authService, env }));
-    mountMainApp("/v1/discover", createDiscoverRouter({ db, authService }));
+    mountMainApp("/v1/discover", createDiscoverRouter({ db, authService, env }));
     mountMainApp("/v1/users", createPublicUsersRouter({ db, authService, env }));
     mountMainApp("/v1/users", createSocialUsersRouter({ db, authService, env }));
     mountMainApp(
@@ -137,6 +138,10 @@ export function createApp(deps: CreateAppDeps): express.Application {
     mountMainApp("/v1/store", createStoreRouter({ db, authService, env }));
     mountMainApp("/v1/jobs", createJobsRouter({ db, authService, env }));
     mountMainApp("/v1/membership", createMembershipRouter({ db, authService, env }));
+    mountMainApp(
+      "/v1/meetup-invites",
+      createMeetupInvitesRouter({ db, authService, env }),
+    );
     app.use("/v1/admin", createAdminRouter({ db, authService, env }));
   }
 

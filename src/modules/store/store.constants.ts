@@ -10,3 +10,7 @@ export const STORE_CHECKOUT_UNAVAILABLE = {
   message:
     "Checkout, payment, tax, shipping, pickup confirmation, and membership discounts are not configured.",
 };
+
+/** Cart `subtotalCents` uses fulfillable catalog value only; not a payable checkout total. */
+export const STORE_SUBTOTAL_DISCLAIMER =
+  "subtotalCents sums fulfillable catalog line value at current stock (AVAILABLE lines fully; INSUFFICIENT_STOCK lines capped at on-hand quantity). linesSubtotalCents reflects requested quantities for display. Excludes tax, shipping, pickup, membership discounts, and checkout. Place Order is not available.";

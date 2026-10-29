@@ -13,11 +13,22 @@ import {
   toPublicActivitySource,
 } from "./activity-mapper.js";
 import {
+  canApplicantSubmitJoinRequest,
+  isWaitlistFifoEligible,
+} from "./activity-join-policy.js";
+import {
   canBrowseActivities,
   decideWaitlistPromotion,
+  hasTrustedKycForActivityAction,
   isUpcomingInstant,
+  requiresKycForConfirmedJoin,
   resolveJoinPath,
 } from "./activity-policy.js";
+import {
+  activityStartsAtWhere,
+  participantInventoryActivityWhere,
+} from "./activity-my-inventory.policy.js";
+import { assertPublicActivityDiscoverableToNonHostViewer } from "./activity-public-visibility.js";
 import { ACTIVITY_LIST_DEFAULT_LIMIT, ACTIVITY_LIST_MAX_LIMIT } from "./activity.constants.js";
 import {
   toMyParticipationDto,
@@ -64,8 +75,64 @@ export class ActivityRsvpService {
         const existing = await tx.activityParticipation.findUnique({
           where: { activityId_userId: { activityId, userId: viewer.id } },
         });
-        if (existing?.state === "CONFIRMED" || existing?.state === "WAITLISTED") {
-          return toMyParticipationDto(existing);
+        if (
+          existing?.state === "CONFIRMED" ||
+          existing?.state === "WAITLISTED" ||
+          existing?.state === "PENDING"
+        ) {
+          return toMyParticipationDto(existing, activity.joinMode);
+        }
+
+        assertPublicActivityDiscoverableToNonHostViewer(activity, this.kyc);
+
+        if (activity.joinMode === "HOST_APPROVAL") {
+          const submit = canApplicantSubmitJoinRequest(existing?.state ?? null);
+          if (!submit.allowed) {
+            if (submit.reason === "declined_reapply_unresolved") {
+              throw new AppError(
+                "CONFLICT",
+                "Reapplication after a declined request is not available",
+                409,
+              );
+            }
+            throw new AppError("CONFLICT", "You already have an active participation record", 409);
+          }
+          if (
+            requiresKycForConfirmedJoin(activity.mode) &&
+            !hasTrustedKycForActivityAction(toKycTrustSnapshot(viewer), this.kyc)
+          ) {
+            throw activityKycRequired();
+          }
+          const now = new Date();
+          const saved = existing
+            ? await tx.activityParticipation.update({
+                where: { id: existing.id },
+                data: {
+                  state: "PENDING",
+                  waitlistPosition: null,
+                  hostApprovedAt: null,
+                  cancelledAt: null,
+                  joinedAt: now,
+                },
+              })
+            : await tx.activityParticipation.create({
+                data: {
+                  activityId,
+                  userId: viewer.id,
+                  state: "PENDING",
+                  joinedAt: now,
+                },
+              });
+          await this.notifications.emitInTransaction(tx, {
+            recipientId: activity.hostId,
+            type: "ACTIVITY_JOIN_REQUEST_RECEIVED",
+            sourceId: activityId,
+            actorUserId: viewer.id,
+            title: "New join request",
+            body: "Someone requested to join your activity.",
+            dedupeKey: `activity-join-request:${activityId}:${viewer.id}`,
+          });
+          return toMyParticipationDto(saved, activity.joinMode);
         }
 
         const confirmedCount = await tx.activityParticipation.count({
@@ -129,7 +196,7 @@ export class ActivityRsvpService {
             body: "You are waitlisted for this activity.",
             dedupeKey: `activity-rsvp:waitlisted:${activityId}:${viewer.id}`,
           });
-          return toMyParticipationDto(saved);
+          return toMyParticipationDto(saved, activity.joinMode);
         }
 
         const saved = existing
@@ -138,6 +205,7 @@ export class ActivityRsvpService {
               data: {
                 state: "CONFIRMED",
                 waitlistPosition: null,
+                hostApprovedAt: null,
                 cancelledAt: null,
                 joinedAt: now,
               },
@@ -159,15 +227,16 @@ export class ActivityRsvpService {
           body: "Your spot is confirmed for this activity.",
           dedupeKey: `activity-rsvp:confirmed:${activityId}:${viewer.id}`,
         });
-        return toMyParticipationDto(saved);
+        return toMyParticipationDto(saved, activity.joinMode);
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         const existing = await this.db.activityParticipation.findUnique({
           where: { activityId_userId: { activityId, userId: viewer.id } },
+          include: { activity: { select: { joinMode: true } } },
         });
         if (existing) {
-          return toMyParticipationDto(existing);
+          return toMyParticipationDto(existing, existing.activity.joinMode);
         }
       }
       throw err;
@@ -180,7 +249,14 @@ export class ActivityRsvpService {
       await tx.$executeRaw`SELECT 1 FROM "Activity" WHERE "id" = ${activityId} FOR UPDATE`;
       const activity = await tx.activity.findUnique({
         where: { id: activityId },
-        select: { id: true, hostId: true, mode: true, capacity: true, status: true },
+        select: {
+          id: true,
+          hostId: true,
+          mode: true,
+          capacity: true,
+          status: true,
+          joinMode: true,
+        },
       });
       if (!activity) {
         throw activityNotFound();
@@ -197,6 +273,14 @@ export class ActivityRsvpService {
         where: { activityId_userId: { activityId, userId: viewer.id } },
       });
       if (!existing || existing.state === "CANCELLED") {
+        return { left: true as const, promoted: false as const };
+      }
+
+      if (existing.state === "PENDING" || existing.state === "DECLINED") {
+        await tx.activityParticipation.update({
+          where: { id: existing.id },
+          data: { state: "CANCELLED", waitlistPosition: null, cancelledAt: new Date() },
+        });
         return { left: true as const, promoted: false as const };
       }
 
@@ -240,11 +324,22 @@ export class ActivityRsvpService {
       cursor = { startsAt: new Date(decoded.startsAt), id: decoded.id };
     }
 
+    const when = query.when ?? "all";
+    const participation = query.participation ?? "active";
+    const participationStates =
+      participation === "confirmed"
+        ? (["CONFIRMED"] as const)
+        : participation === "waitlisted"
+          ? (["WAITLISTED"] as const)
+          : (["CONFIRMED", "WAITLISTED"] as const);
+
     const rows = await this.db.activityParticipation.findMany({
       where: {
         userId: viewer.id,
-        state: { in: ["CONFIRMED", "WAITLISTED"] },
+        state: { in: [...participationStates] },
         activity: {
+          ...participantInventoryActivityWhere,
+          ...activityStartsAtWhere(when, new Date()),
           ...(cursor
             ? {
                 OR: [
@@ -271,7 +366,7 @@ export class ActivityRsvpService {
     const viewerSnapshot = toDiscoverUserSnapshot(viewer);
     const rsvps: MyActivityRsvpDto[] = [];
     for (const row of page) {
-      const myParticipation = toMyParticipationDto(row);
+      const myParticipation = toMyParticipationDto(row, row.activity.joinMode);
       if (!myParticipation) {
         continue;
       }
@@ -302,12 +397,13 @@ export class ActivityRsvpService {
       hostId: string;
       mode: "IN_PERSON" | "VIRTUAL" | "HYBRID";
       capacity: number;
+      joinMode: "AUTO" | "HOST_APPROVAL";
     },
   ): Promise<string | null> {
     const confirmedCount = await tx.activityParticipation.count({
       where: { activityId: activity.id, state: "CONFIRMED" },
     });
-    const next = await tx.activityParticipation.findFirst({
+    const queued = await tx.activityParticipation.findMany({
       where: { activityId: activity.id, state: "WAITLISTED" },
       orderBy: [{ waitlistPosition: "asc" }, { joinedAt: "asc" }],
       include: {
@@ -331,31 +427,36 @@ export class ActivityRsvpService {
       },
     });
 
-    const blocked = next
-      ? await isBlockedEitherDirection(tx, next.user.id, activity.hostId)
-      : false;
-    const decision = decideWaitlistPromotion({
-      hasOpenSeat: confirmedCount < activity.capacity,
-      nextQueued: next
-        ? {
-            accountEligible: hasFullAccountAccess(toPolicyActor(next.user), this.kyc),
-            blockedWithHost: blocked,
-            kycTrust: toKycTrustSnapshot(next.user),
-          }
-        : null,
-      mode: activity.mode,
-      kyc: this.kyc,
-    });
-
-    if (decision.action !== "promote" || !next) {
-      return null;
+    for (const next of queued) {
+      if (
+        !isWaitlistFifoEligible({
+          joinMode: activity.joinMode,
+          hostApprovedAt: next.hostApprovedAt,
+        })
+      ) {
+        continue;
+      }
+      const blocked = await isBlockedEitherDirection(tx, next.user.id, activity.hostId);
+      const decision = decideWaitlistPromotion({
+        hasOpenSeat: confirmedCount < activity.capacity,
+        nextQueued: {
+          accountEligible: hasFullAccountAccess(toPolicyActor(next.user), this.kyc),
+          blockedWithHost: blocked,
+          kycTrust: toKycTrustSnapshot(next.user),
+        },
+        mode: activity.mode,
+        kyc: this.kyc,
+      });
+      if (decision.action !== "promote") {
+        return null;
+      }
+      await tx.activityParticipation.update({
+        where: { id: next.id },
+        data: { state: "CONFIRMED", waitlistPosition: null },
+      });
+      return next.user.id;
     }
-
-    await tx.activityParticipation.update({
-      where: { id: next.id },
-      data: { state: "CONFIRMED", waitlistPosition: null },
-    });
-    return next.user.id;
+    return null;
   }
 
   private assertBrowse(viewer: User): void {

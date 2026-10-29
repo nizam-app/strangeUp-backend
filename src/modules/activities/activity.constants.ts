@@ -13,4 +13,7 @@ export const ACTIVITY_CAPACITY_MAX = 500;
 export const ACTIVITY_LIST_DEFAULT_LIMIT = 20;
 export const ACTIVITY_LIST_MAX_LIMIT = 50;
 
+/** Screen 12 stacked avatar preview cap (See All uses normal pagination). */
+export const ACTIVITY_ROSTER_PREVIEW_MAX = 5;
+
 export const ACTIVITY_NOT_FOUND_MESSAGE = "Not found";

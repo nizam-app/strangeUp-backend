@@ -33,12 +33,24 @@ const optionalNullableText = (max: number) =>
   z.union([z.string().trim().min(1).max(max), z.null()]).optional();
 
 export const activityModeSchema = z.enum(["IN_PERSON", "VIRTUAL", "HYBRID"]);
+export const activityJoinModeSchema = z.enum(["AUTO", "HOST_APPROVAL"]);
 export const activityAudienceSchema = z.enum(["PUBLIC", "FOLLOWERS_ONLY"]);
 export const activityStatusFilterSchema = z.enum(["DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"]);
 
 export const activityIdParamSchema = z.object({
   activityId: z.string().uuid(),
 });
+
+export const activityRosterQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(ACTIVITY_LIST_MAX_LIMIT).optional(),
+    cursor: z.string().min(1).optional(),
+    preview: z
+      .union([z.literal("true"), z.literal("false"), z.literal("1"), z.literal("0")])
+      .optional()
+      .transform((value) => value === "true" || value === "1"),
+  })
+  .strict();
 
 export const activityListQuerySchema = z
   .object({
@@ -54,18 +66,61 @@ export const activityListQuerySchema = z
   })
   .strict();
 
+export const activityWhenFilterSchema = z.enum(["upcoming", "past", "all"]);
+
 export const hostActivityListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(ACTIVITY_LIST_MAX_LIMIT).optional(),
     cursor: z.string().min(1).optional(),
     status: activityStatusFilterSchema.optional(),
+    when: activityWhenFilterSchema.optional(),
   })
   .strict();
+
+export const myRsvpParticipationFilterSchema = z.enum(["active", "confirmed", "waitlisted"]);
 
 export const myRsvpListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(ACTIVITY_LIST_MAX_LIMIT).optional(),
     cursor: z.string().min(1).optional(),
+    when: activityWhenFilterSchema.optional(),
+    participation: myRsvpParticipationFilterSchema.optional(),
+  })
+  .strict();
+
+export const myActivityInventoryViewSchema = z.enum([
+  "upcoming",
+  "hosting",
+  "joined",
+  "waitlisted",
+  "pending",
+  "past",
+]);
+
+export const hostJoinRequestStatusSchema = z.enum(["pending", "declined", "waitlisted"]);
+
+export const hostJoinRequestListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(ACTIVITY_LIST_MAX_LIMIT).optional(),
+    cursor: z.string().min(1).optional(),
+    status: hostJoinRequestStatusSchema.optional(),
+  })
+  .strict();
+
+export const hostJoinRequestUserParamSchema = z.object({
+  activityId: z.string().uuid(),
+  userId: z.string().uuid(),
+});
+
+export const myActivityInventoryQuerySchema = z
+  .object({
+    view: myActivityInventoryViewSchema,
+    limit: z.coerce.number().int().min(1).max(ACTIVITY_LIST_MAX_LIMIT).optional(),
+    cursor: z.string().min(1).optional(),
+    includeCounts: z
+      .union([z.literal("true"), z.literal("false"), z.literal("1"), z.literal("0")])
+      .optional()
+      .transform((value) => value === "true" || value === "1"),
   })
   .strict();
 
@@ -96,6 +151,7 @@ export const createActivityBodySchema = z
     gearNotes: z.string().trim().min(1).max(ACTIVITY_GEAR_NOTES_MAX).optional(),
     capacity: z.number().int().min(ACTIVITY_CAPACITY_MIN).max(ACTIVITY_CAPACITY_MAX),
     waitlistEnabled: z.boolean().optional(),
+    joinMode: activityJoinModeSchema.optional(),
   })
   .strict()
   .refine((body) => assertEndAfterStart(body.startsAt, body.endsAt), {
@@ -122,6 +178,7 @@ export const patchActivityBodySchema = z
     gearNotes: optionalNullableText(ACTIVITY_GEAR_NOTES_MAX),
     capacity: z.number().int().min(ACTIVITY_CAPACITY_MIN).max(ACTIVITY_CAPACITY_MAX).optional(),
     waitlistEnabled: z.boolean().optional(),
+    joinMode: activityJoinModeSchema.optional(),
   })
   .strict()
   .refine((body) => Object.keys(body).length > 0, {
@@ -142,3 +199,6 @@ export type PatchActivityInput = z.infer<typeof patchActivityBodySchema>;
 export type ActivityListQuery = z.infer<typeof activityListQuerySchema>;
 export type HostActivityListQuery = z.infer<typeof hostActivityListQuerySchema>;
 export type MyRsvpListQuery = z.infer<typeof myRsvpListQuerySchema>;
+export type MyActivityInventoryQuery = z.infer<typeof myActivityInventoryQuerySchema>;
+export type HostJoinRequestListQuery = z.infer<typeof hostJoinRequestListQuerySchema>;
+export type ActivityRosterQuery = z.infer<typeof activityRosterQuerySchema>;

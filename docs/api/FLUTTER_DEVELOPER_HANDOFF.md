@@ -1,6 +1,6 @@
 # Flutter Developer Handoff — StrangeUp Backend
 
-**Last updated:** 2026-10-27 (through Task **021** — canonical consent + KYC verification foundation)
+**Last updated:** 2026-10-29 (Tasks **022D** activation gate through **029H** groups/jobs closure; **027I** activities; **028H** meetup invites **READY_FOR_OWNER_REVIEW**; doc sync after Task **030** backend audit)
 **Audience:** Flutter mobile team in the **separate Flutter repository** (development based in Bangladesh; product launch market **USA**).
 
 **Maintained by:** `strangeup-backend` only. Backend agents do not implement Flutter screens; they update this file whenever HTTP APIs change.
@@ -9,7 +9,7 @@ This document is the **primary integration guide** for calling the StrangeUp API
 
 - **`docs/api/CURRENT_APIS.md`** — authoritative list of **implemented** routes (update on every API change).
 - **`docs/api/IDENTITY_API_DRAFT.md`** — broader identity contracts (some routes still PLANNED).
-- **`openapi/foundation.yaml`**, **`openapi/identity.yaml`** — machine-readable specs (partial coverage; not every LIVE route).
+- **`openapi/*.yaml`** — machine-readable specs (**partial** coverage; **`CURRENT_APIS.md`** is complete for LIVE HTTP). Primary bundles: `foundation`, `identity`, `settings`, `activities`, `social`, `meetup-invites`, `groups`, `group-content`, `messaging-realtime`, `push-devices`, `home`, `notifications`, `store`, `jobs`, `membership`, `admin` (staff-only — not for mobile).
 
 ### Source of truth (avoid drift)
 
@@ -62,7 +62,7 @@ Always parse the top-level shape before reading nested fields.
 **Success:** `response.data` + `response.meta.requestId`
 **Failure:** `response.error.code`, `response.error.message`, `response.error.requestId`
 
-**Implemented routes:** All **LIVE** endpoints are listed in **`CURRENT_APIS.md`** (Tasks 001–021), including health, auth, `/v1/me/*`, interests, discover/users, activities, social, groups, home, notifications, store, jobs, membership, **`/v1/consents/*`**, and **`/v1/me/verification/*`** (latter callable only when backend enables a KYC adapter).
+**Implemented routes:** All **LIVE** REST endpoints (~178 routes) are listed in **`CURRENT_APIS.md`** (Tasks **001–029H** within approved scope). Mobile-relevant surface includes: health, auth, **`/v1/consents/*`**, **`/v1/me/onboarding/status`**, **`/v1/me/verification/*`** (provider usually disabled), self account/profile/settings, interests, discover/users, activities (027 hybrid join + roster), **`/v1/meetup-invites/*`** (product capability still **DEFERRED** until owner sign-off), social + **`/v1/me/messaging/summary`**, Socket.IO DM/group (**§14.5**), push device tokens + preferences, groups (029 create/manage/archive), home + community feed, in-app notifications (incl. meetup types), store (no checkout), jobs (no employer publish), membership (read-only plans). **Not for Flutter:** **`/v1/admin/*`** (Admin Panel / staff catalog). **PLANNED** routes (e.g. destructive account delete) are at the end of **`CURRENT_APIS.md`** only.
 
 ---
 
@@ -269,7 +269,9 @@ Call after **every login** and on Screen 07 / post-register navigation. This is 
 
 **Register → IDV:** `POST /v1/auth/register` does **not** return tokens. After register, route to login (or email verify) then call this endpoint before any Home navigation. `user.fullAccess` on login remains `false` until provider KYC **and** StrangeUp admin approval (see ADR-005).
 
-**Figma auth ZIP parity (Task 022D):** Screen-by-screen classification (MATCHED / PARTIAL / DEFERRED / FLUTTER-ONLY) — `docs/product/FIGMA_AUTH_FLOW_PARITY_TASK022.md`. Government ID + selfie capture are **Veriff SDK only** (no backend upload). Apple/Google login buttons are **DEFERRED** (no OAuth routes). Email verification and admin-waiting UI were **not** in the supplied ZIP; use onboarding API states. Home destination UI after approval is **owner-supplied later**; backend gate is `homeAccessAllowed` + `GET /v1/home`.
+**Figma auth ZIP parity (Task 022D):** Screen-by-screen classification — `docs/product/FIGMA_AUTH_FLOW_PARITY_TASK022.md`. Government ID + selfie capture are **Veriff SDK only** (no backend upload). Apple/Google login buttons are **DEFERRED** (no OAuth routes). Email verification and admin-waiting UI were **not** in the auth ZIP; use onboarding API states.
+
+**Main Flow ZIP parity (Task 025A):** Home/Discover/Activities/Marketplace/Profile screens — `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025A.md` (nine PDFs in `design-reference/task025-main-flow/`). **All five main tabs** require `homeAccessAllowed: true` (Task 022 / ADR-005), not email verification alone. Home composition: `GET /v1/home`; messages header badge: `GET /v1/me/messaging/summary` (separate from `notificationsUnreadCount`).
 
 ```dart
 final onboarding = await http.get(
@@ -322,7 +324,7 @@ await http.patch(
 
 `birthDate` is returned on GET for the owner but cannot be changed through this API (registration-time field).
 
-**Gating for Save (Edit Personal Details):** After login, call `GET /v1/me/account`. If `emailVerified` is false or `ageEligibilityStatus` is not `ELIGIBLE`, show read-only fields and disable save — `PATCH`, `PUT /v1/me/interests`, `PUT /v1/me/favorite-activities`, and avatar `POST/DELETE` return `403 AUTH_FORBIDDEN`. Pending users may still **read** profile, interests, favorites, and avatar for display.
+**Gating for Save (Edit Personal Details — Task 025D / `Html → Body.pdf`):** After login, call `GET /v1/me/profile` and `GET /v1/me/account`. If `emailVerified` is false or `ageEligibilityStatus` is not `ELIGIBLE`, disable save (`403 AUTH_FORBIDDEN` on PATCH). When **`legalNameLocked === true`** (trusted KYC and/or prior staff identity approval — **sticky** after expiry/revocation; Task 025D/025E), disable first/last name fields — server rejects those PATCH keys. Corrections require owner-approved support flow (not self-serve PATCH). **`birthDate` is never PATCHable.** Main-app gate: `GET /v1/me/settings/overview`, interests, favorite-activities, avatar POST/DELETE (after gate), blocks, saved activities → `403 ONBOARDING_REQUIRED` until `homeAccessAllowed`. Main Flow parity: `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025E.md` (Profile detail: `FIGMA_MAIN_FLOW_PARITY_TASK025D.md`).
 
 `GET /v1/me/profile` also returns `profileVisibility`, `locationCity`, `locationRegion`, `hasAvatar`, and `avatarUpdatedAt`. Use `hasAvatar` before calling `GET /v1/me/profile/avatar`. Do **not** show a government-ID or “verified location” badge from these fields alone.
 
@@ -380,7 +382,7 @@ await http.put(
 
 **Prerequisites (Task 022C):** Main-app routes (discovery, `/v1/users/*`, activities, groups, home, store, jobs, membership, and gated `/v1/me/*` product routes) require **`homeAccessAllowed: true`** (trusted provider KYC + StrangeUp admin approval on the same session). Pending users receive **`403 ONBOARDING_REQUIRED`** with `nextAction` — not a generic crash. Onboarding-safe APIs remain available: auth, `GET /v1/me/onboarding/status`, `/v1/me/verification/*`, account/profile read, password change, session inventory/revoke, deletion impact, and interest **catalog** `GET /v1/interests`.
 
-1. **People list (`Screen 09`):** `GET /v1/discover/people?limit=20&cursor=...` optional `q`, `city`, `region`, `interest` (catalog slug). Response `data.people[]` preview objects; paginate with `meta.nextCursor`.
+1. **People list (`Screen 09`):** `GET /v1/discover/people?limit=20&cursor=...` optional `q`, `city`, `region`, `interest` (catalog slug). Response `data.people[]` preview objects; paginate with `meta.nextCursor`. **Targets are main-app activated only** (Task 022/025B) — onboarding-pending users never appear. Do **not** render Figma miles, map, “nearest first”, last-active, age/today filters, or active-peer counts unless future APIs exist (`docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025B.md`).
 2. **Public profile (`Screen 10`):** `GET /v1/users/{userId}` — use only returned fields; **no** email, DOB, KYC, or visibility enum.
 3. **Avatar:** If `hasAvatar`, `GET /v1/users/{userId}/avatar` with bearer token (not a public CDN URL).
 4. **Visibility:** Targets default `VERIFIED_USERS_ONLY`; viewer needs server `identityVerificationStatus === APPROVED` to see them (not email verification alone). `EVERYONE` targets visible to all eligible viewers. **No anonymous access.**
@@ -407,25 +409,27 @@ final people = jsonDecode(list.body)['data']['people'] as List;
 
 **Settings hub (`Screen 26_ Profile & Settings.pdf`) — Task 015:**
 
-1. **Hub load:** `GET /v1/me/settings/overview` — use `data.profile`, `data.account`, `data.counts`, and **`data.capabilities`** (never treat DEFERRED/UNAVAILABLE as zero counts). `relatedRoutes` lists existing endpoints for navigation.
-2. **Saved Activities (Activity entities):** `GET /v1/me/saved-activities`, `PUT/DELETE /v1/me/saved-activities/{activityId}`. **Not** the same as Task 008 `favorite-activities` preference pins.
+1. **Hub load:** `GET /v1/me/settings/overview` — requires **main-app activation**. Use `data.profile`, `data.account` (`adminReviewStatus`, `legalNameLocked`, `fullAccess`, `identityVerificationStatus`), `data.counts`, and **`data.capabilities`** (never treat DEFERRED/UNAVAILABLE as zero counts; **no** rating/meetup-invite fields). `relatedRoutes` lists existing endpoints for navigation.
+2. **Saved Activities (Activity entities):** `GET /v1/me/saved-activities`, `PUT/DELETE /v1/me/saved-activities/{activityId}`. **Not** the same as Task 008 `favorite-activities` preference pins. **027D:** List/save apply Task 025C host discoverability (same as public discover); ineligible hosts **omitted** from list / **404** on save; underlying save rows preserved. Settings `counts.savedActivities` counts **all** DB saves and may exceed visible list length (**MDWQ-0718** — optional future visible count).
 3. **Blocked users:** LIVE via `GET/POST/DELETE /v1/me/blocks*` (see §9).
 4. **Password & security:** `POST /v1/me/password-change` (below) + `GET /v1/me/security/sessions`, `DELETE /v1/me/security/sessions/{sessionId}`, `POST /v1/auth/logout-all`.
 5. **Email change:** `POST /v1/me/email-change/request` then `POST /v1/me/email-change/confirm` — **DEV_ONLY** email delivery until an approved transactional provider is configured. When **`transactionalEmail.canHandOff`** is false (typical production `TRANSACTIONAL_EMAIL_MODE=disabled`), both routes return **`403 FEATURE_DISABLED`**. After confirm, **all sessions revoked** — force re-login. Password account only (no password → do not show change-email).
 6. **Delete account:** `GET /v1/me/account-deletion/impact` only — show `AWAITING_POLICY`; **no** destructive delete API. Do not show success/deletion complete UI.
-7. **Still DEFERRED / placeholders:** subscription **billing**, payment history, 2FA, phone verify/edit, meetup invites row, host star ratings, “ID Verified” marketing badges beyond `identityVerificationStatus`, 24/7 support guarantees.
+7. **Still DEFERRED / placeholders:** subscription **billing**, payment history, 2FA, phone verify/edit, settings hub meetup row (`capabilities.meetupInvites` still **DEFERRED** until owner sign-off), host star ratings, “ID Verified” marketing badges beyond `identityVerificationStatus`, 24/7 support guarantees.
 8. **Membership summary (Task 017 / Screen 18):** `data.membership` on settings overview; full detail via `GET /v1/me/membership`; catalog via `GET /v1/membership/plans`. **`capabilities.membershipPlanCatalog: LIVE`**; **`capabilities.subscription: DEFERRED`** (no live upgrade/checkout).
 
-**Membership plans screen (`Screen 18_ Membership Plans.pdf`) — Task 017:**
+**Membership plans screen (`Screen 18_ Membership Plans.pdf`) — Task 017 / 026A:**
 
-1. **Default selection:** Users without an approved paid subscription show **`planId: BASIC`**, **`tierKind: FREE`** from `GET /v1/me/membership`.
-2. **Catalog:** `GET /v1/membership/plans` — render Basic as **available** (`pricing.monthlyAmountCents: 0`); Strangeup Club as **coming soon / not configured** (`purchasable: false`, `pricing: null`). **Do not** display Figma `$6.49/mo`, `$77.88/yr`, trial, or “35% off” as live offers until D-08 approves prices.
-3. **Upgrade CTA:** Honor `canUpgrade: false` — disable button or show “Coming soon”; surface `upgradeBlockedReasons` in dev/support builds only if useful.
-4. **Monthly/yearly toggle:** Club intervals are not configured; Basic only exposes `MONTHLY` at zero — hide misleading annual Club math.
-5. **Perks list:** Use `features[]` / `entitlements.capabilities[]` **`status`** — treat `POLICY_PENDING` / `NOT_IMPLEMENTED` as **not active**; never imply 3-RSVP cap, 5-mile radius, or concierge are enforced.
-6. **KYC badge:** Never infer verified ID from membership; use **`identityVerificationStatus`** only (Task 010).
-7. **Apple Pay / receipts / trials:** No APIs — do not show payment sheets, trial countdown, `nextBillingAt`, or invoice history.
-8. **Settings hub:** `GET /v1/me/settings/overview` → `membership.planDisplayName`, `canUpgrade`, `billingStatus: NOT_CONFIGURED`.
+1. **Default selection:** Users without verified paid billing show **`planId: BASIC`**, **`tierKind: FREE`** from `GET /v1/me/membership`.
+2. **Catalog:** `GET /v1/membership/plans` — Basic **`pricing.monthlyAmountCents: 0`**; Club **`purchasable: false`**, **`pricing: null`**. **Do not** show Figma Club prices, trial, or checkout tax math as live offers.
+3. **Flow contract:** Read **`data.flow`** on both endpoints (`contractVersion`, `checkout`, `billingIntervalSelector`, `figmaEvidence.knownPricingContradictions`). Owner **2026-10-28:** all billing **DEFERRED**.
+4. **Upgrade CTA:** `canUpgrade: false` — disable; optional dev-only `upgradeBlockedReasons`.
+5. **Monthly/yearly toggle:** Use `flow.billingIntervalSelector` — Club intervals **NOT_CONFIGURED**; do not compute annual savings client-side.
+6. **Perks list:** Honor feature **`status`**: **`NOT_CONFIGURED`**, **`DEFERRED`**, **`NOT_IMPLEMENTED`** → not active/enforced; only **`AVAILABLE`** may be shown as included (still subject to Task 022 gates).
+7. **KYC badge:** Never infer from membership; use **`identityVerificationStatus`** + admin review (Task 022).
+8. **Checkout / restore / Apple Pay:** `flow.checkout.status: DEFERRED` — no payment sheets, restore, trials, or invoices.
+9. **Group membership:** Not subscription billing — see `notes.communityGroupMembershipIndependent` on self membership.
+10. **Settings hub:** `GET /v1/me/settings/overview` → compact `membership`; full `flow` on `/v1/me/membership`.
 
 ```dart
 final membership = await http.get(
@@ -475,7 +479,7 @@ Apply migrations before integration tests: `npx prisma migrate deploy` against t
 
 ## 11. Documentation duty
 
-When backend merges API changes, **`CURRENT_APIS.md` must change in that PR**. Flutter leads should subscribe to diffs on that file and section 7 here.
+When backend merges API changes, **`CURRENT_APIS.md` must change in that PR** and this handoff must reflect product gating / screen wiring. Flutter leads should subscribe to diffs on **`CURRENT_APIS.md`** first, then the relevant §§ here (auth §7–8, profile §9, activities §13, meetups §13A, messaging §14–14.7, groups §15, home §16, store/jobs §17, membership §19).
 
 ---
 
@@ -552,15 +556,32 @@ Design-only until server contracts exist:
 **Do not treat Figma demo claims as live:** `100% verified attendees`, maps, miles-away chips, host star ratings, member counts, or a two-hour edit lock. Favorite-activity profile pins (`/v1/me/favorite-activities`) are **not** Activity records.
 
 1. **Catalog:** `GET /v1/activity-categories` — use these slugs for create/filter. Do **not** reuse profile Interests as activity categories.
-2. **Discovery (`Screen 11`):** `GET /v1/activities?limit=20&category=biking&q=&city=&region=` — paginate with `meta.nextCursor`. Hide map / Nearby radius UI or mark it unavailable.
+2. **Discovery (`Screen 11`):** `GET /v1/activities?limit=20&category=biking&q=&city=&region=` — paginate with `meta.nextCursor`. `q` matches activity **title** or host **displayName/username**. Only **main-app activated** hosts’ public activities appear (Task 025C). Hide map / Within 5 miles radius UI or mark unavailable (D-04). Parity: `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025C.md`.
 3. **Details (`Screen 12`):** `GET /v1/activities/{id}` for public fields only. If `meetingAvailable` is true, call `GET /v1/activities/{id}/meeting` for exact instructions. Never persist meeting text in analytics.
-4. **Join:** `POST /v1/activities/{id}/rsvp`. Handle `200` with `state: CONFIRMED | WAITLISTED`, `403 IDENTITY_VERIFICATION_REQUIRED`, `409` at capacity, `404` hidden/blocked.
+4. **Join:** `POST /v1/activities/{id}/rsvp`. **AUTO:** `state: CONFIRMED | WAITLISTED`. **HOST_APPROVAL:** `state: PENDING` until host acts. Handle `403 IDENTITY_VERIFICATION_REQUIRED`, `409` at capacity / duplicate / declined reapply, `404` hidden/blocked.
 5. **Leave:** `DELETE /v1/activities/{id}/rsvp` (idempotent).
 6. **Create (`Screen 13`):** `POST /v1/me/activities` creates a **draft**. `POST /v1/me/activities/{id}/publish` is required before it appears in discovery. Real-world publish needs server KYC — there is no production approval path yet, so expect `IDENTITY_VERIFICATION_REQUIRED` in production.
 7. **Cover:** `POST /v1/me/activities/{id}/cover` multipart field name **`cover`**. Public fetch: `GET /v1/activities/{id}/cover` when `hasCover`.
 8. **Followers Only:** You may send `audience: FOLLOWERS_ONLY` on a draft; publish will `400`. Do not present it as a working live audience.
 9. **Verified-members toggle:** Do not send a client flag to weaken KYC. Server always gates real-world confirm/publish.
-10. **My Activities:** `GET /v1/me/activities` (hosted) and `GET /v1/me/activity-rsvps` (joined/waitlisted). No attendee roster API.
+10. **My Activities (Task 027B/027E):** Prefer `GET /v1/me/activity-inventory?view=upcoming|hosting|joined|waitlisted|pending|past` with optional `includeCounts=true` (`pendingApproval` count when counts requested). **`view=pending`** lists activities where `myParticipation.state === PENDING` (`relationship=PENDING_APPROVAL`). **WAITLISTED is capacity waitlist, not host approval.** Use `myParticipation.participationStatus` (`AUTO_*` vs `APPROVAL_*`) for UI copy.
+11. **Hybrid joining (Task 027E, D-09):** Activities expose `joinMode`. Draft create/patch may set `HOST_APPROVAL`; locked after publish. **AUTO:** `POST …/rsvp` unchanged. **HOST_APPROVAL:** RSVP → **PENDING** (no meeting access). Host: `GET …/join-requests`, `POST …/approve`, `POST …/decline`. Host manage DTO includes `hostParticipationSummary` (truthful counters — ignore Figma 6 vs 8 example). Reapply after **DECLINED** → **409** (policy TBD). Withdraw pending via `DELETE …/rsvp`.
+12. **Activity privacy (Task 027C):** When a host loses activation (025C), public `GET /v1/activities/:id`, cover, meeting, and **new** RSVP return **404** for non-hosts; existing CONFIRMED/WAITLISTED rows stay in DB and inventory/leave still work; host preview on inventory may be redacted. Meeting requires current trusted KYC for real-world modes when participant still has app access (`meetingAvailable` + `GET …/meeting`).
+13. **Attendee roster (Task 027F, ACT-ROSTER conservative):** Screen 12 face stack → `GET /v1/activities/{id}/participants?preview=true&limit=5`. **See All (N)** → same route with pagination; use `data.confirmedCount` for **N** (matches public detail `confirmedCount`). Authorized viewers: **host** (manage-eligible) or **CONFIRMED** participant only — **404** for PENDING/WAITLISTED/DECLINED/outsiders (not public). Rows are D-03 `PublicProfilePreview` only; fetch avatars via existing profile media routes when `hasAvatar`. **Do not** expect roster on public detail or join-requests.
+
+### 13A. Personal meetup invitations (Task 028D–028H — **not** Activity RSVP)
+
+**Backend readiness:** **READY_FOR_OWNER_REVIEW** (028H). Wire APIs when owner approves; keep settings `capabilities.meetupInvites` **DEFERRED** until owner explicitly enables LIVE.
+
+**Separate domain from §13 Activity join / 027E host approval.** Do not call Activity RSVP for Figma “Meetup Invites” inbox.
+
+1. **Create (Figma Create Meetup):** `POST /v1/meetup-invites` with `recipientUserId`, `meetupType`, `title`, `scheduledStartsAt`, `scheduleTimeZone`, `venue`, optional `note`. Optional header **`Idempotency-Key`**. Requires sender trusted KYC; recipient must be discoverable (Task 022 + D-03). `409` if a **PENDING** invite already exists for the same ordered pair.
+2. **Inbox:** `GET /v1/meetup-invites?box=incoming|outgoing&status=pending|accepted|declined|withdrawn|expired|all&limit=&cursor=`. Use `data.counts.pending` (incoming only) for tab badge — **not** notification unread state.
+3. **Detail:** `GET /v1/meetup-invites/{id}`. Recipient: **city/region only** until `status === ACCEPTED`; list cards never show address/label. Sender sees full submitted venue.
+4. **Actions (028E):** `POST /v1/meetup-invites/{id}/accept` (recipient, KYC), `…/decline` (recipient), `…/withdraw` (sender). Empty body. **200** on success; repeat same terminal action **200**; wrong terminal **409**; wrong actor **403**; stranger/blocked **404**. After accept, detail/accept response includes full venue for recipient. Wire `data.actions.canAccept|canDecline|canWithdraw` from list/detail.
+5. **Notifications (028G — LIVE in backend):** Four types (`MEETUP_INVITATION_RECEIVED|ACCEPTED|DECLINED|WITHDRAWN`) on create/accept/decline/withdraw. Pull `/v1/me/notifications`; tap → `GET /v1/meetup-invites/{sourceId}`. Generic copy only (no venue/note/names). Toggle `meetupInvitesEnabled` on notification preferences. Mark read ≠ accept. Push obeys `PUSH_ENABLED` + prefs (signal-only payload).
+6. **Deferred (028F+):** Reschedule, post-accept cancel, maps, check-in copy. Do **not** treat `capabilities.meetupInvites` as LIVE until owner enables hub capability.
+7. **Re-invite:** After terminal states (`DECLINED`, `WITHDRAWN`, `EXPIRED`), a **new** create is allowed when no active `PENDING` row exists (D-28).
 
 ```dart
 final list = await http.get(
@@ -708,7 +729,7 @@ OpenAPI: `openapi/push-devices.yaml`.
 | Master switch | `PUSH_ENABLED=false` → outbox rows are marked **`SKIPPED`** (`PUSH_DISABLED`); **no FCM HTTP** from this API process. |
 | Source of truth | Only **persisted** `UserNotification` rows enqueue outbox work (no synthetic billing/meetup/identity-complete pushes). |
 | Payload | FCM **data** keys: `notificationId`, `type`, optional opaque `sourceId`. Display title/body are **generic** per type — **never** DM text, KYC, or tokens. Resolve details via authenticated `GET /v1/me/notifications` (and existing domain APIs). |
-| Preferences | Honored at send time (`pushEnabled` + per-category toggles). `groupChatEnabled` default **false**. |
+| Preferences | Honored at send time (`pushEnabled` + per-category toggles). `groupChatEnabled` default **false**. Meetup types use **`meetupInvitesEnabled`** (default **true**). |
 | Gates | Task 022 home access, non-suspended account, active session for session-bound device tokens. |
 | Invalid token | Server revokes `UserDeviceToken`; client should re-register after login. |
 | Worker | In-process interval (`PUSH_WORKER_*` env). Multi-instance safe via Postgres `FOR UPDATE SKIP LOCKED`. |
@@ -738,9 +759,10 @@ Operational notes: `docs/operations/PUSH_DELIVERY_TASK023D.md`.
 
 1. **Catalog:** `GET /v1/group-categories` — use these slugs. Do **not** reuse profile Interests or activity categories.
 2. **Discovery (`Screen 14`):** `GET /v1/groups?q=&category=sports&city=&privacy=` — both PUBLIC and PRIVATE_APPROVAL appear as summaries. Paginate with `meta.nextCursor`. Hide map/nearby UI.
-3. **Create (`Screen 1`):** `POST /v1/me/groups` with name **max 60**. Optional `tags` (max 5, `[a-z0-9-]`, 2–24 chars), `meetupFrequency` (`WEEKLY` \| `ACTIVE_DAILY` \| `BIWEEKLY`) is display-only, `memberCapacity` min 2. Cover: `POST /v1/me/groups/{id}/cover` field name **`cover`**, **5MB** (not the Figma 10MB example).
-4. **Join:** `POST /v1/groups/{id}/join`. PUBLIC → `ACTIVE`. PRIVATE_APPROVAL → `PENDING`. After `DECLINED` or `REMOVED`, the next join is always `PENDING` (even on PUBLIC). Last owner cannot leave (`403`) — call `POST /v1/me/groups/{id}/transfer-ownership` first.
-5. **Manage (`Screen 2`):** `GET /v1/me/groups/{id}/manage`, approve/decline `.../join-requests/{membershipId}/...`. `memberCount` is ACTIVE rows only.
+2b. **My Groups inventory (Task 029B — Figma My Groups screen UNVERIFIED until MDWQ-0910 re-export):** `GET /v1/me/groups` with **`view`**: `all` (default: ACTIVE + PENDING), `joined` (ACTIVE + role `MEMBER`), `managed` (ACTIVE + OWNER or MODERATOR), `pending` (PENDING only). Do **not** combine `view` with `status`/`role` (400). Optional `q` filters by group name. Tab badge counts are **not** returned — compute client-side from paginated lists or defer (MDWQ-0912). Cancel pending: `DELETE /v1/groups/{id}/join`.
+3. **Create (`Screen 1`, Task 029C):** `POST /v1/me/groups` with name **max 60**. Optional `description`, `locationCity`/`locationRegion`, `tags` (max 5), `meetupFrequency`, `memberCapacity` (min **2**). Categories from `GET /v1/group-categories` only — do not send Figma free-text category names. Cover is **after** create: `POST /v1/me/groups/{id}/cover` field **`cover`**, **5MB** (not Figma 10MB). **`PATCH`/cover return 403** once owner archives the group.
+4. **Join (Task 029D):** `POST /v1/groups/{id}/join`. PUBLIC → `ACTIVE`. PRIVATE_APPROVAL → `PENDING`. After `DECLINED` or `REMOVED`, rejoin is `PENDING`. **`ARCHIVED` groups return `403` on join/approve/decline/remove/role/transfer.** Voluntary `DELETE .../join` (leave/cancel) still works for non-owner members. Last owner cannot leave (`403`) — transfer first. Duplicate join while `PENDING` is idempotent. Repeat approve on already-ACTIVE request returns `200`. Use `membershipId` from join-requests list, not userId.
+5. **Manage (`Screen 2`, Task 029C):** `GET /v1/me/groups/{id}/manage` → `memberCount`, `pendingRequestCount`, `visiblePostCount` (truthful only — no weekly deltas or “Live Synced”). Moderators may `PATCH` non-restricted fields; **privacy** and **memberCapacity** are **owner-only** (403 for mods). Approve/decline join requests with `membershipId` from join-requests list. Do not render verified badges, growth stats, or manage-timeline items without backend fields (`FIGMA_GROUPS_JOBS_PARITY_TASK029C.md`).
 6. **Details (`Screen 15`):** `GET /v1/groups/{id}` is a summary. Posts, members, comments, likes, and chat require `canAccessContent: true`. Use generic `404` for unauthorized content — do not infer that the group is missing.
 7. **Posts:** text `{ "body" }`. Optional `activityId` after attach. Task 016 photo/poll fields exist on post DTOs but stay **`photo: null`, `poll: null`** until server enables interactive media (see §18).
 8. **Chat:** `GET /v1/me/group-chats` for Screen 16 group-thread previews. Send via `POST /v1/groups/{id}/chat/messages`. This is **not** `/v1/me/conversations`. Optional ephemeral typing via Socket.IO §14.5. No E2EE or online/presence counts.
@@ -765,11 +787,11 @@ final groupId = jsonDecode(created.body)['data']['groupId'];
 
 ---
 
-## 16. Home dashboard, community feed & notifications (Task 013)
+## 16. Home dashboard, community feed & notifications (Task 013 / 025A)
 
-**Status:** LIVE and verified on isolated Neon `strangeup_test`. **Stories remain DEFERRED** (D-06 provisional).
+**Status:** LIVE and verified on isolated Neon `strangeup_test`. **Stories remain DEFERRED** (D-06 provisional). Screen 08 has two Figma variants (original vs Community & Stories Update); backend returns a **superset** — treat `stories.status === "DEFERRED"` and empty arrays as hide rules until HOME-08 is decided (`docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025A.md`).
 
-**Do not ship Figma claims:** 24h disappearing stories row, push badges, “Membership Active” / “Identity Verification Completed” unless backed by future KYC/session APIs, geo “near you” distances, online/active-now indicators, or ML “Recommended For You”.
+**Do not ship Figma claims:** 24h disappearing stories row, push badges, “142 Active Peers”, “Membership Active” / “Identity Verification Completed” unless backed by real APIs, geo “near you” miles/map, online/active-now indicators, verified badge fields on previews, or ML “Recommended For You”.
 
 1. **Home (`Screen 08`):** `GET /v1/home` — single composition call. Use `myGroups`, `communityFeedPreview`, `upcomingGroupActivities`, `people`, `activities`, `featured`, `notificationsUnreadCount`. Render `stories.status === "DEFERRED"` as hidden/disabled (no client-side fake story data).
 2. **Community feed:** `GET /v1/me/community-feed?cursor=&limit=&groupId=` — cross-group text posts only; optional `linkedActivity` public card (no meeting fields). Paginate with `meta.nextCursor`. Pins are **not** globally prioritized across groups.
@@ -783,6 +805,7 @@ final groupId = jsonDecode(created.body)['data']['groupId'];
 | `DIRECT_MESSAGE_RECEIVED` | Conversation for `sourceId` |
 | `GROUP_MEMBERSHIP_APPROVED` / `DECLINED` | Group detail `sourceId` |
 | `ACTIVITY_RSVP_*` / `ACTIVITY_WAITLIST_PROMOTED` | Activity detail `sourceId` |
+| `MEETUP_INVITATION_*` | Meetup detail `/v1/meetup-invites/{sourceId}` |
 
 5. **Pull-only:** no WebSocket, FCM, or email from these endpoints.
 
@@ -802,13 +825,64 @@ final unread = jsonDecode(home.body)['data']['notificationsUnreadCount'];
 
 **Screens:** 20 (marketplace grid), 21 (product detail), 22 (cart — subtotal only), 23 (jobs).
 
+**Task 029 closure (029H):** Groups + Jobs backend is **complete within approved scope** — see `FIGMA_GROUPS_JOBS_PARITY_TASK029H_FINAL.md`. My Groups PDF is **UNVERIFIED** (**MDWQ-0910**). Group Details has two Figma variants — **MDWQ-0911**. Jobs **publish**, **employer delivery**, and extended application lifecycle (**029G**) are **not** implemented; queue IDs **0901**, **0902**, **0905** stay open.
+
 **Do not ship Figma claims:** star ratings, member/club prices, “verified” merchant badges, saved payment cards, place order, shipping/pickup ETAs, miles/nearest jobs, official partner badges, applicant counts, or “application sent to employer” unless backend adds real delivery status.
 
 1. **Store catalog:** `GET /v1/store/categories` then `GET /v1/store/products?category=cycling&q=&size=&color=&cursor=`. Empty product list is valid on fresh DBs. Product cards use `priceFromCents` + `currency` only — no ratings or member price fields.
 2. **Product detail:** `GET /v1/store/products/{productId}` — variants include `stockQuantity` and `inStock`; images via `GET /v1/store/products/{productId}/images/{imageId}` when `primaryImageId` set.
 3. **Favorites:** `PUT/DELETE /v1/me/store/favorites/{productId}`; list `GET /v1/me/store/favorites`.
-4. **Cart:** `PUT /v1/me/store/cart/items/{variantId}` body `{ "quantity": n }` (0 removes). `GET /v1/me/store/cart` returns `subtotalCents`, `subtotalDisclaimer`, and `checkout: { status: "UNAVAILABLE", reasonCode: "PAYMENT_AND_FULFILLMENT_NOT_CONFIGURED", ... }`. **Disable Place Order** in UI.
-5. **Jobs discovery:** `GET /v1/jobs` with filters; detail `GET /v1/jobs/{jobId}`. Pay block includes `disclaimer` (self-reported). Saved: `PUT/DELETE /v1/me/saved-jobs/{jobId}`.
+4. **Cart (Task 024A):** `PUT /v1/me/store/cart/items/{variantId}` body `{ "quantity": n }` (0 removes). `GET /v1/me/store/cart` returns:
+   - **`subtotalCents`** — fulfillable catalog value only (AVAILABLE lines at full qty; `INSUFFICIENT_STOCK` capped at on-hand stock; `UNAVAILABLE` excluded). **Not** tax/shipping/discount/checkout total.
+   - **`linesSubtotalCents`** — display sum at requested quantities (`lineSubtotalCents` per line).
+   - Per line: `availability` (`AVAILABLE` \| `INSUFFICIENT_STOCK` \| `UNAVAILABLE`), `availabilityReason`, `eligibleLineSubtotalCents`, `maxPurchasableQuantity`, server `unitPriceCents`.
+   - **`summary`:** `allLinesPurchasable`, `hasInsufficientStock`, `hasUnavailableLines`, line counts.
+   - **`pricingQuote` (024C):** `catalogSubtotalCents` mirrors fulfillable `subtotalCents`; membership/shipping/tax **`NOT_CONFIGURED`**; `totalDueCents` **null** — see §17.2.
+   - **`fulfillment` / `orderReadiness` (024D):** methods **`NOT_CONFIGURED`**; `cartLinesOrderEligible` false when any line is not fully `AVAILABLE` — see §17.3.
+   - **`checkout`:** `{ status: "UNAVAILABLE", reasonCode: "PAYMENT_AND_FULFILLMENT_NOT_CONFIGURED", ... }` — **disable Place Order** always in this release.
+   - Read `subtotalDisclaimer` for user-facing copy. Matrix: `docs/product/FIGMA_MARKETPLACE_PARITY_TASK024A.md`.
+5. **Jobs discovery (029F):** `GET /v1/jobs` — query params `q`, `employmentType`, `workMode`, `city`, `region`, `cursor`, `limit` (1–50). **`q` and `cursor` may be used together** (keyset pages stay within the active search). Invalid filter enums return **400**. Detail: `GET /v1/jobs/{jobId}`. Pay block includes `disclaimer` (self-reported). Saved: `GET /v1/me/saved-jobs`; `PUT/DELETE /v1/me/saved-jobs/{jobId}` (closed listings drop from saved list). Applications tab: `GET /v1/me/job-applications` (read-only; no new lifecycle in 029F). Parity: `FIGMA_GROUPS_JOBS_PARITY_TASK029F.md`.
+
+### 17.3 Fulfillment & order readiness (Task 024D — no orders)
+
+| Endpoint / field | Guidance |
+|---|---|
+| `GET /v1/store/fulfillment-policy` | `PHYSICAL_MERCHANDISE_ORDER` domain; methods `NOT_CONFIGURED`; activity pickup **spec** only |
+| Cart `fulfillment` | No method selection; `selectedMethod` always **null** |
+| Cart `orderReadiness` | Use `cartLinesOrderEligible` before any future Place Order; if **false**, show blocked lines — **do not** cap qty silently |
+| Checkout | Still **`UNAVAILABLE`** — no order POST, no reservation |
+
+Doc: `docs/product/STORE_FULFILLMENT_ORDER_ARCHITECTURE_TASK024D.md`.
+
+### 17.2 Store pricing & Club merchandise contract (Task 024C — no live discounts)
+
+**Canonical model:** `LIST_PRICE_PLUS_SINGLE_CART_DISCOUNT` — catalog `priceCents` is list price; future Club benefit is **one** cart-level adjustment, never line member prices **plus** a second discount row.
+
+| Endpoint | Use |
+|---|---|
+| `GET /v1/store/pricing-policy` | Machine-readable policy; all components `NOT_CONFIGURED` except checkout `UNAVAILABLE` |
+| `GET /v1/store/products` | `pricingHint.membershipPriceStatus` — always `NOT_CONFIGURED` today |
+| `GET /v1/store/products/{id}` | `variants[].pricing` (`listUnitPriceCents`, `memberUnitPriceCents: null`); `merchandisePricingPolicy` |
+| `GET /v1/me/store/cart` | `pricingQuote` alongside 024A `subtotalCents`; `totalDueCents` always **null** |
+
+**Do not render:** Figma Club jersey/flask prices, extra “Club discount” line, free-shipping progress, tax/shipping/total due until backend returns `APPLIED` / non-null amounts with owner-approved D-08/MKT-03.
+
+Contract doc: `docs/product/STORE_PRICING_CLUB_CONTRACT_TASK024C.md`.
+
+### 17.1 Store catalog management (Task 024B — staff / future Admin Panel only)
+
+**Not a mobile consumer feature.** Flutter **buyer** app continues to use §17 catalog/cart/favorites only.
+
+| Item | Guidance |
+|---|---|
+| Activation | Backend `STORE_CATALOG_MANAGEMENT_ENABLED` (default **false**); production stays off until owner MKT-01/02 |
+| Auth | Separate staff role **`STORE_CATALOG_MANAGER`** — identity reviewers **cannot** manage catalog |
+| API prefix | `/v1/admin/store-catalog/*` (Bearer staff session) |
+| Media | Ingest via staff `POST .../images`; buyers still load `GET /v1/store/products/{id}/images/{imageId}` when published |
+| Checkout | Still **`UNAVAILABLE`** — no operator “place order” |
+| Badges/reviews | Not in API — do not fabricate Official/Verified or star ratings |
+
+Operator contract detail: `docs/operations/STORE_CATALOG_MANAGEMENT_TASK024B.md`, `openapi/admin.yaml`.
 6. **Apply:** `POST /v1/jobs/{jobId}/applications` with `coverMessage` + `applicationConsentVersion` (non-empty string until counsel publishes IDs). Response includes `employerDelivery.status === "NOT_CONFIGURED"` — show in-app tracking only.
 7. **My applications:** `GET /v1/me/job-applications` and `GET /v1/me/job-applications/{applicationId}`.
 8. **Job drafts (optional employer prep):** `POST/PATCH/GET /v1/me/job-listings` — **DRAFT only**; never appears in `GET /v1/jobs` until a future trusted publisher exists.
@@ -837,15 +911,17 @@ assert(checkout['status'] == 'UNAVAILABLE');
 
 ---
 
-## 19. Membership plans & entitlements (Task 017, Screen 18)
+## 19. Membership plans & entitlements (Task 017 / 026A, Screen 18)
 
-**Status:** **LIVE** catalog and self status on isolated Neon. **Billing, Club enrollment, trials, and Apple Pay are NOT LIVE** (D-08 / MKT-03).
+**Status:** **LIVE** read-only catalog + **`flow`** contract. **All payment/subscription billing DEFERRED** (owner 2026-10-28). Physical store checkout remains **UNAVAILABLE** (MKT-03).
 
-1. **Load plans:** `GET /v1/membership/plans` — two offers (`BASIC`, `CLUB`). Club `pricing: null`, `purchasable: false`.
-2. **Current tier:** `GET /v1/me/membership` — always `BASIC` + `FREE` until trusted billing exists; `canUpgrade: false`.
-3. **Settings hub:** `GET /v1/me/settings/overview` → `membership` summary + `capabilities.membershipPlanCatalog: LIVE`.
-4. **Do not bind:** Figma annual/monthly Club prices, trial banner, verified badge from plan, or payment CTAs.
-5. **KYC unchanged:** Activity/group gates still use `identityVerificationStatus`, not membership.
+1. **Load plans:** `GET /v1/membership/plans` — `plans[]` + `flow` (billing/checkout **DEFERRED**, interval selector honest states).
+2. **Current tier:** `GET /v1/me/membership` — server default **`BASIC`/`FREE`**; duplicate `flow` for screen-local use.
+3. **Settings hub:** `membership` summary; `capabilities.membershipPlanCatalog: LIVE`; `capabilities.subscription: DEFERRED`.
+4. **Do not bind:** Figma `$6.49` vs `$9.99` contradiction, trials, tax lines, Club badge, or marketplace member pricing.
+5. **KYC unchanged:** Task 022 home access + `identityVerificationStatus` — independent of plan tier.
+
+**Parity matrix:** `docs/product/FIGMA_MEMBERSHIP_PARITY_TASK026A.md`
 
 See Screen 18 binding bullets under §9 settings hub (item 8).
 
@@ -869,11 +945,19 @@ Do **not** ship production Header messaging/notifications push claims until:
 
 | Date | Summary |
 |---|---|
+| 2026-10-29 | Task **030** — backend completion audit: header/§2/§11 reconciled with **`CURRENT_APIS.md`** (178 LIVE REST routes; no undocumented mobile routes); release blockers unchanged — see `docs/plans/TASK_030_BACKEND_COMPLETION_AUDIT_REPORT.md` |
+| 2026-10-29 | Task **027I** closure — §10 activities inventory/hybrid join/roster/privacy; §13A meetup separation; MDWQ-0718 saved-count note; parity `FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027I_FINAL.md` |
 | 2026-10-27 | Handoff sync — source-of-truth table, feature flags, consent flow; KYC §3/§12 aligned with Task 021 + `CURRENT_APIS.md` |
 | 2026-10-27 | Task 021 — canonical consent + verification routes (provider usually disabled); see §12 table |
 | 2026-10-27 | Task 017 — membership catalog + self entitlements; §19; D-08 billing deferred |
 | 2026-10-27 | Task 016 — group photo/poll/story/report APIs behind D-06 flag; §18; Home stories still DEFERRED |
 | 2026-10-27 | Task 015 — settings overview, saved activities, sessions, email change (DEV_ONLY), deletion impact; §9 Screen 26 |
+| 2026-10-28 | Task 024D — fulfillment policy + cart `orderReadiness` / `fulfillment`; no order tables or placement |
+| 2026-10-28 | Task 024C — merchandise pricing policy + cart `pricingQuote`; list+single-discount model; discounts NOT_CONFIGURED |
+| 2026-10-28 | Task 024B — staff store catalog admin APIs + S3/local product media; §17.1; buyer routes unchanged |
+| 2026-10-28 | Task 024A — cart subtotal integrity (`linesSubtotalCents`, line availability reasons, fulfillable `subtotalCents`); §17; checkout still UNAVAILABLE |
+| 2026-10-29 | Task **029H** — Task 029 Groups & Jobs **complete within approved scope**; consolidated parity `FIGMA_GROUPS_JOBS_PARITY_TASK029H_FINAL.md`; My Groups Figma **UNVERIFIED** (**MDWQ-0910**); Jobs publish/employer delivery **not LIVE** |
+| 2026-10-29 | Task **029F** — Jobs `GET /v1/jobs` documents `q`+`cursor` composition; Screen 23 parity `FIGMA_GROUPS_JOBS_PARITY_TASK029F.md`; no new routes |
 | 2026-10-27 | Task 014 — store catalog/cart/favorites + jobs discovery/applications/drafts; §17; checkout & employer delivery deferred |
 | 2026-10-27 | Task 013 — home dashboard, community feed, in-app notifications; §16; stories deferred |
 | 2026-10-27 | Task 012 — groups/membership/posts/group chat/activity links; §15; no stories/polls/verified badge |

@@ -445,4 +445,547 @@ describeGroups("integration: groups & communities (Task 012)", () => {
       .set("Authorization", `Bearer ${member.accessToken}`);
     expect(rsvps.body.data.rsvps).toEqual([]);
   });
+
+  it("T029B-P01 my groups inventory views partition memberships truthfully", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029b-p01o");
+    const member = await verifiedUser(app, emailSender, db, "t029b-p01m");
+    const mod = await verifiedUser(app, emailSender, db, "t029b-p01mod");
+
+    const owned = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Owner Alpha Club", category: "sports", privacy: "PUBLIC" });
+    expect(owned.status).toBe(201);
+    const ownedId = owned.body.data.groupId as string;
+
+    const managed = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Mod Beta Circle", category: "social", privacy: "PUBLIC" });
+    expect(managed.status).toBe(201);
+    const managedId = managed.body.data.groupId as string;
+    await request(app)
+      .post(`/v1/groups/${managedId}/join`)
+      .set("Authorization", `Bearer ${mod.accessToken}`);
+    await request(app)
+      .post(`/v1/me/groups/${managedId}/members/${mod.userId}/role`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ role: "MODERATOR" });
+
+    await request(app)
+      .post(`/v1/groups/${ownedId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+
+    const pendingGroup = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Pending Private", category: "hobbies", privacy: "PRIVATE_APPROVAL" });
+    expect(pendingGroup.status).toBe(201);
+    const pendingId = pendingGroup.body.data.groupId as string;
+    await request(app)
+      .post(`/v1/groups/${pendingId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+
+    const ownerAll = await request(app)
+      .get("/v1/me/groups?view=all")
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(ownerAll.status).toBe(200);
+    expect(ownerAll.body.data.groups.map((g: { groupId: string }) => g.groupId).sort()).toEqual(
+      [ownedId, managedId, pendingId].sort(),
+    );
+
+    const managedView = await request(app)
+      .get("/v1/me/groups?view=managed")
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(managedView.status).toBe(200);
+    expect(managedView.body.data.groups.map((g: { groupId: string }) => g.groupId).sort()).toEqual(
+      [ownedId, managedId, pendingId].sort(),
+    );
+
+    const modManaged = await request(app)
+      .get("/v1/me/groups?view=managed")
+      .set("Authorization", `Bearer ${mod.accessToken}`);
+    expect(modManaged.body.data.groups.map((g: { groupId: string }) => g.groupId)).toEqual([
+      managedId,
+    ]);
+
+    const memberJoined = await request(app)
+      .get("/v1/me/groups?view=joined")
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(memberJoined.status).toBe(200);
+    expect(memberJoined.body.data.groups.map((g: { groupId: string }) => g.groupId)).toEqual([
+      ownedId,
+    ]);
+
+    const memberPending = await request(app)
+      .get("/v1/me/groups?view=pending")
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(memberPending.status).toBe(200);
+    expect(memberPending.body.data.groups.map((g: { groupId: string }) => g.groupId)).toEqual([
+      pendingId,
+    ]);
+
+    const search = await request(app)
+      .get("/v1/me/groups?view=all&q=Alpha")
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(search.status).toBe(200);
+    expect(search.body.data.groups).toHaveLength(1);
+    expect(search.body.data.groups[0].groupId).toBe(ownedId);
+  });
+
+  it("T029B-P02 private groups remain discoverable summaries; non-members cannot read posts", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029b-p02o");
+    const stranger = await verifiedUser(app, emailSender, db, "t029b-p02s");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Hidden-ish Social", category: "social", privacy: "PRIVATE_APPROVAL" });
+    expect(created.status).toBe(201);
+    const groupId = created.body.data.groupId as string;
+
+    const discover = await request(app)
+      .get("/v1/groups?privacy=PRIVATE_APPROVAL")
+      .set("Authorization", `Bearer ${stranger.accessToken}`);
+    expect(discover.status).toBe(200);
+    expect(discover.body.data.groups.some((g: { groupId: string }) => g.groupId === groupId)).toBe(
+      true,
+    );
+
+    const detail = await request(app)
+      .get(`/v1/groups/${groupId}`)
+      .set("Authorization", `Bearer ${stranger.accessToken}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.canAccessContent).toBe(false);
+
+    const posts = await request(app)
+      .get(`/v1/groups/${groupId}/posts`)
+      .set("Authorization", `Bearer ${stranger.accessToken}`);
+    expect(posts.status).toBe(404);
+  });
+
+  it("T029C-P01 create and manage reflect Figma-aligned fields without fabricated stats", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029c-p01o");
+    const mod = await verifiedUser(app, emailSender, db, "t029c-p01mod");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({
+        name: "Miami Sunrise Run & Cycle",
+        description: "Morning strides and coastal sunrises.",
+        category: "outdoor",
+        locationCity: "Miami Beach",
+        locationRegion: "FL",
+        privacy: "PUBLIC",
+        meetupFrequency: "WEEKLY",
+        memberCapacity: 50,
+        tags: ["morningcrew", "outdoor-fitness"],
+      });
+    expect(created.status).toBe(201);
+    const groupId = created.body.data.groupId as string;
+    expect(created.body.data).toMatchObject({
+      privacy: "PUBLIC",
+      meetupFrequency: "WEEKLY",
+      memberCapacity: 50,
+      memberCount: 1,
+      spotsLeft: 49,
+    });
+    expect(created.body.data.tags).toEqual(["morningcrew", "outdoor-fitness"]);
+    expect(created.body.data).not.toHaveProperty("verified");
+
+    await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${mod.accessToken}`);
+    await request(app)
+      .post(`/v1/me/groups/${groupId}/members/${mod.userId}/role`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ role: "MODERATOR" });
+
+    const modPatchName = await request(app)
+      .patch(`/v1/me/groups/${groupId}`)
+      .set("Authorization", `Bearer ${mod.accessToken}`)
+      .send({ name: "Sunrise Run Club" });
+    expect(modPatchName.status).toBe(200);
+
+    const modPatchPrivacy = await request(app)
+      .patch(`/v1/me/groups/${groupId}`)
+      .set("Authorization", `Bearer ${mod.accessToken}`)
+      .send({ privacy: "PUBLIC" });
+    expect(modPatchPrivacy.status).toBe(403);
+
+    const manage = await request(app)
+      .get(`/v1/me/groups/${groupId}/manage`)
+      .set("Authorization", `Bearer ${mod.accessToken}`);
+    expect(manage.status).toBe(200);
+    expect(manage.body.data.memberCount).toBe(2);
+    expect(manage.body.data.pendingRequestCount).toBe(0);
+    expect(manage.body.data.visiblePostCount).toBe(0);
+    expect(manage.body.data).not.toHaveProperty("weeklyMemberGrowth");
+  });
+
+  it("T029C-P02 concurrent approvals respect last open seat", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029c-p02o");
+    const a = await verifiedUser(app, emailSender, db, "t029c-p02a");
+    const b = await verifiedUser(app, emailSender, db, "t029c-p02b");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({
+        name: "One Seat Club",
+        category: "social",
+        privacy: "PRIVATE_APPROVAL",
+        memberCapacity: 2,
+      });
+    const groupId = created.body.data.groupId as string;
+
+    await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${a.accessToken}`);
+    await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${b.accessToken}`);
+
+    const requests = await request(app)
+      .get(`/v1/me/groups/${groupId}/join-requests`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    const ids = requests.body.data.requests.map(
+      (r: { membershipId: string }) => r.membershipId,
+    ) as string[];
+    expect(ids).toHaveLength(2);
+
+    const [first, second] = await Promise.all([
+      request(app)
+        .post(`/v1/me/groups/${groupId}/join-requests/${ids[0]}/approve`)
+        .set("Authorization", `Bearer ${owner.accessToken}`),
+      request(app)
+        .post(`/v1/me/groups/${groupId}/join-requests/${ids[1]}/approve`)
+        .set("Authorization", `Bearer ${owner.accessToken}`),
+    ]);
+    const statuses = [first.status, second.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    const active = await db.communityMembership.count({ where: { groupId, status: "ACTIVE" } });
+    expect(active).toBe(2);
+  });
+
+  it("T029C-P03 archived groups reject settings and cover mutations", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029c-p03o");
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Archive Me", category: "hobbies", privacy: "PUBLIC" });
+    const groupId = created.body.data.groupId as string;
+
+    const archived = await request(app)
+      .post(`/v1/me/groups/${groupId}/archive`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(archived.status).toBe(200);
+
+    const patch = await request(app)
+      .patch(`/v1/me/groups/${groupId}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Should Fail" });
+    expect(patch.status).toBe(403);
+
+    const cover = await request(app)
+      .post(`/v1/me/groups/${groupId}/cover`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .attach("cover", TINY_PNG, { filename: "cover.png", contentType: "image/png" });
+    expect(cover.status).toBe(403);
+  });
+
+  it("T029C-P04 private group cover is member-only; capacity cannot drop below active count", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029c-p04o");
+    const member = await verifiedUser(app, emailSender, db, "t029c-p04m");
+    const member2 = await verifiedUser(app, emailSender, db, "t029c-p04m2");
+    const outsider = await verifiedUser(app, emailSender, db, "t029c-p04x");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({
+        name: "Private Cover",
+        category: "social",
+        privacy: "PRIVATE_APPROVAL",
+        memberCapacity: 4,
+      });
+    const groupId = created.body.data.groupId as string;
+
+    const upload = await request(app)
+      .post(`/v1/me/groups/${groupId}/cover`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .attach("cover", TINY_PNG, { filename: "cover.png", contentType: "image/png" });
+    expect(upload.status).toBe(200);
+
+    const outsiderCover = await request(app)
+      .get(`/v1/groups/${groupId}/cover`)
+      .set("Authorization", `Bearer ${outsider.accessToken}`);
+    expect(outsiderCover.status).toBe(404);
+
+    for (const token of [member.accessToken, member2.accessToken]) {
+      await request(app)
+        .post(`/v1/groups/${groupId}/join`)
+        .set("Authorization", `Bearer ${token}`);
+    }
+    const requests = await request(app)
+      .get(`/v1/me/groups/${groupId}/join-requests`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    for (const row of requests.body.data.requests as { membershipId: string }[]) {
+      await request(app)
+        .post(`/v1/me/groups/${groupId}/join-requests/${row.membershipId}/approve`)
+        .set("Authorization", `Bearer ${owner.accessToken}`);
+    }
+
+    const memberCover = await request(app)
+      .get(`/v1/groups/${groupId}/cover`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(memberCover.status).toBe(200);
+
+    const shrink = await request(app)
+      .patch(`/v1/me/groups/${groupId}`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ memberCapacity: 2 });
+    expect(shrink.status).toBe(403);
+  });
+
+  it("T029B-P03 non-activated accounts cannot list groups or my inventory", async () => {
+    const blocked = await verifiedUser(app, emailSender, db, "t029b-p03", {
+      mainAppAccess: false,
+    });
+    const discover = await request(app)
+      .get("/v1/groups")
+      .set("Authorization", `Bearer ${blocked.accessToken}`);
+    expect(discover.status).toBe(403);
+
+    const mine = await request(app)
+      .get("/v1/me/groups")
+      .set("Authorization", `Bearer ${blocked.accessToken}`);
+    expect(mine.status).toBe(403);
+  });
+
+  it("T029D-P01 archived groups block membership mutations but allow leave and manage read", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029d-p01o");
+    const member = await verifiedUser(app, emailSender, db, "t029d-p01m");
+    const outsider = await verifiedUser(app, emailSender, db, "t029d-p01x");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Archive Lifecycle", category: "social", privacy: "PRIVATE_APPROVAL" });
+    const groupId = created.body.data.groupId as string;
+
+    await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    const requestsBefore = await request(app)
+      .get(`/v1/me/groups/${groupId}/join-requests`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    const pendingId = requestsBefore.body.data.requests[0].membershipId as string;
+
+    await request(app)
+      .post(`/v1/me/groups/${groupId}/archive`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+
+    const join = await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${outsider.accessToken}`);
+    expect(join.status).toBe(403);
+
+    const approve = await request(app)
+      .post(`/v1/me/groups/${groupId}/join-requests/${pendingId}/approve`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(approve.status).toBe(403);
+
+    const decline = await request(app)
+      .post(`/v1/me/groups/${groupId}/join-requests/${pendingId}/decline`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(decline.status).toBe(403);
+
+    const manage = await request(app)
+      .get(`/v1/me/groups/${groupId}/manage`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(manage.status).toBe(200);
+
+    const rearchive = await request(app)
+      .post(`/v1/me/groups/${groupId}/archive`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(rearchive.status).toBe(403);
+
+    const ownerLeave = await request(app)
+      .delete(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(ownerLeave.status).toBe(403);
+  });
+
+  it("T029D-P02 role and cross-group authorization cannot escalate or bleed", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029d-p02o");
+    const mod = await verifiedUser(app, emailSender, db, "t029d-p02mod");
+    const member = await verifiedUser(app, emailSender, db, "t029d-p02m");
+
+    const g1 = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Auth Group One", category: "sports", privacy: "PUBLIC" });
+    const g2 = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Auth Group Two", category: "sports", privacy: "PRIVATE_APPROVAL" });
+    const group1 = g1.body.data.groupId as string;
+    const group2 = g2.body.data.groupId as string;
+
+    await request(app)
+      .post(`/v1/groups/${group1}/join`)
+      .set("Authorization", `Bearer ${mod.accessToken}`);
+    await request(app)
+      .post(`/v1/me/groups/${group1}/members/${mod.userId}/role`)
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ role: "MODERATOR" });
+
+    await request(app)
+      .post(`/v1/groups/${group2}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    const g2req = await request(app)
+      .get(`/v1/me/groups/${group2}/join-requests`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    const g2MembershipId = g2req.body.data.requests[0].membershipId as string;
+
+    const modApproveG2 = await request(app)
+      .post(`/v1/me/groups/${group2}/join-requests/${g2MembershipId}/approve`)
+      .set("Authorization", `Bearer ${mod.accessToken}`);
+    expect(modApproveG2.status).toBe(404);
+
+    const modChangeOwnerRole = await request(app)
+      .post(`/v1/me/groups/${group1}/members/${owner.userId}/role`)
+      .set("Authorization", `Bearer ${mod.accessToken}`)
+      .send({ role: "MEMBER" });
+    expect(modChangeOwnerRole.status).toBe(404);
+
+    const memberApprove = await request(app)
+      .post(`/v1/me/groups/${group1}/join-requests/${g2MembershipId}/approve`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(memberApprove.status).toBe(404);
+  });
+
+  it("T029D-P03 removed and left members lose content access; pending inventory updates", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029d-p03o");
+    const member = await verifiedUser(app, emailSender, db, "t029d-p03m");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Access Revoke Club", category: "fitness", privacy: "PUBLIC" });
+    const groupId = created.body.data.groupId as string;
+
+    await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+
+    await request(app)
+      .post(`/v1/groups/${groupId}/posts`)
+      .set("Authorization", `Bearer ${member.accessToken}`)
+      .send({ body: "member post" });
+
+    await request(app)
+      .post(`/v1/me/groups/${groupId}/members/${member.userId}/remove`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+
+    const postsAfterRemove = await request(app)
+      .get(`/v1/groups/${groupId}/posts`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(postsAfterRemove.status).toBe(404);
+
+    const chatAfterRemove = await request(app)
+      .post(`/v1/groups/${groupId}/chat/messages`)
+      .set("Authorization", `Bearer ${member.accessToken}`)
+      .send({ body: "nope" });
+    expect(chatAfterRemove.status).toBe(404);
+
+    const pendingGroup = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Pending Only", category: "hobbies", privacy: "PRIVATE_APPROVAL" });
+    const pendingGroupId = pendingGroup.body.data.groupId as string;
+    await request(app)
+      .post(`/v1/groups/${pendingGroupId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+
+    const pendingList = await request(app)
+      .get("/v1/me/groups?view=pending")
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(pendingList.body.data.groups.some((g: { groupId: string }) => g.groupId === pendingGroupId)).toBe(
+      true,
+    );
+
+    const requests = await request(app)
+      .get(`/v1/me/groups/${pendingGroupId}/join-requests`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    await request(app)
+      .post(
+        `/v1/me/groups/${pendingGroupId}/join-requests/${requests.body.data.requests[0].membershipId}/decline`,
+      )
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+
+    const pendingAfterDecline = await request(app)
+      .get("/v1/me/groups?view=pending")
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(
+      pendingAfterDecline.body.data.groups.some(
+        (g: { groupId: string }) => g.groupId === pendingGroupId,
+      ),
+    ).toBe(false);
+
+    const rejoin = await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(rejoin.body.data.status).toBe("PENDING");
+
+    const joinedAfterRemoved = await request(app)
+      .get("/v1/me/groups?view=joined")
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(
+      joinedAfterRemoved.body.data.groups.some((g: { groupId: string }) => g.groupId === groupId),
+    ).toBe(false);
+  });
+
+  it("T029D-P04 idempotent approve and duplicate join requests stay stable", async () => {
+    const owner = await verifiedUser(app, emailSender, db, "t029d-p04o");
+    const member = await verifiedUser(app, emailSender, db, "t029d-p04m");
+
+    const created = await request(app)
+      .post("/v1/me/groups")
+      .set("Authorization", `Bearer ${owner.accessToken}`)
+      .send({ name: "Idempotent Club", category: "social", privacy: "PRIVATE_APPROVAL" });
+    const groupId = created.body.data.groupId as string;
+
+    const firstJoin = await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(firstJoin.body.data.status).toBe("PENDING");
+
+    const secondJoin = await request(app)
+      .post(`/v1/groups/${groupId}/join`)
+      .set("Authorization", `Bearer ${member.accessToken}`);
+    expect(secondJoin.body.data.status).toBe("PENDING");
+
+    const requests = await request(app)
+      .get(`/v1/me/groups/${groupId}/join-requests`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(requests.body.data.requests).toHaveLength(1);
+    const membershipId = requests.body.data.requests[0].membershipId as string;
+
+    const approve1 = await request(app)
+      .post(`/v1/me/groups/${groupId}/join-requests/${membershipId}/approve`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(approve1.status).toBe(200);
+
+    const approve2 = await request(app)
+      .post(`/v1/me/groups/${groupId}/join-requests/${membershipId}/approve`)
+      .set("Authorization", `Bearer ${owner.accessToken}`);
+    expect(approve2.status).toBe(200);
+    expect(approve2.body.data.status).toBe("ACTIVE");
+
+    const active = await db.communityMembership.count({ where: { groupId, status: "ACTIVE" } });
+    expect(active).toBe(2);
+  });
 });

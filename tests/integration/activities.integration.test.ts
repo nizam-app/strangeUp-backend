@@ -95,7 +95,7 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
     emailSender.clear();
   });
 
-  it("T010-P01 eligible viewer browses published activities without KYC; drafts stay hidden", async () => {
+  it("T010-P01 activated viewer browses published activities; drafts stay hidden", async () => {
     const host = await verifiedUser(app, emailSender, db, "t010-host");
     const viewer = await verifiedUser(app, emailSender, db, "t010-viewer");
     const draft = await createDraft(app, host.accessToken);
@@ -319,6 +319,66 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
       .post(`/v1/activities/${activityId}/rsvp`)
       .set("Authorization", `Bearer ${guest.accessToken}`);
     expect(blockedJoin.status).toBe(404);
+  });
+
+  it("T025C-P01 activities hidden when host loses main-app activation", async () => {
+    const viewer = await verifiedUser(app, emailSender, db, "t025c-viewer");
+    const host = await verifiedUser(app, emailSender, db, "t025c-host");
+    const created = await createDraft(app, host.accessToken, { title: "Revocation Ride" });
+    await request(app)
+      .post(`/v1/me/activities/${created.body.data.activityId}/publish`)
+      .set("Authorization", `Bearer ${host.accessToken}`);
+    const activityId = created.body.data.activityId as string;
+
+    const visible = await request(app)
+      .get("/v1/activities?q=Revocation")
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(visible.status).toBe(200);
+    expect(
+      visible.body.data.activities.some((a: { activityId: string }) => a.activityId === activityId),
+    ).toBe(true);
+
+    await db.user.update({
+      where: { id: host.userId },
+      data: { adminReviewStatus: "PENDING", adminReviewVerificationSessionId: null },
+    });
+
+    const hiddenList = await request(app)
+      .get("/v1/activities?q=Revocation")
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(hiddenList.status).toBe(200);
+    expect(
+      hiddenList.body.data.activities.some((a: { activityId: string }) => a.activityId === activityId),
+    ).toBe(false);
+
+    const detail = await request(app)
+      .get(`/v1/activities/${activityId}`)
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(detail.status).toBe(404);
+  });
+
+  it("T025C-P02 search q matches host display name", async () => {
+    const host = await verifiedUser(app, emailSender, db, "t025c-hostsearch");
+    const viewer = await verifiedUser(app, emailSender, db, "t025c-viewsearch");
+    const tag = `HostSearch${Date.now()}`;
+    await db.profile.update({
+      where: { userId: host.userId },
+      data: { displayName: tag },
+    });
+    const created = await createDraft(app, host.accessToken, { title: "Unrelated title xyz" });
+    await request(app)
+      .post(`/v1/me/activities/${created.body.data.activityId}/publish`)
+      .set("Authorization", `Bearer ${host.accessToken}`);
+
+    const list = await request(app)
+      .get(`/v1/activities?q=${encodeURIComponent(tag)}`)
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(list.status).toBe(200);
+    expect(
+      list.body.data.activities.some(
+        (a: { activityId: string }) => a.activityId === created.body.data.activityId,
+      ),
+    ).toBe(true);
   });
 
   it("T010-N03 FOLLOWERS_ONLY cannot be published; cancelled activities reject joins", async () => {

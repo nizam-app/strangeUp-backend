@@ -18,6 +18,7 @@ describe("activity discovery query", () => {
     expect(where.audience).toBe("PUBLIC");
     expect(where.startsAt).toEqual({ gte: now });
     expect(where.hostId).toEqual({ notIn: ["11111111-1111-4111-8111-111111111111"] });
+    expect(where.host).toMatchObject({ adminReviewStatus: "APPROVED" });
     expect(JSON.stringify(where)).not.toMatch(/meetingInstructions/);
   });
 
@@ -33,7 +34,26 @@ describe("activity discovery query", () => {
         mode: "IN_PERSON",
       },
     });
-    expect(where.title).toEqual({ contains: "ride", mode: "insensitive" });
+    const andClauses = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+    expect(andClauses[0]).toEqual({
+      OR: [
+        { title: { contains: "ride", mode: "insensitive" } },
+        {
+          host: {
+            is: {
+              profile: {
+                is: {
+                  OR: [
+                    { displayName: { contains: "ride", mode: "insensitive" } },
+                    { username: { contains: "ride", mode: "insensitive" } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
     expect(where.category).toEqual({ slug: "biking" });
     expect(where.locationCity).toEqual({ equals: "Miami", mode: "insensitive" });
     expect(where.mode).toBe("IN_PERSON");

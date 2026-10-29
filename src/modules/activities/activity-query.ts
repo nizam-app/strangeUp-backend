@@ -1,4 +1,5 @@
 import type { Prisma } from "../../../generated/prisma/client.js";
+import { buildActivatedDiscoverTargetWhere } from "../discovery/discover-target-policy.js";
 import type { ActivityListQuery } from "./activity.validation.js";
 
 export function buildDiscoverableActivitiesWhere(input: {
@@ -27,14 +28,35 @@ export function buildDiscoverableActivitiesWhere(input: {
       ageEligibilityStatus: "ELIGIBLE",
       suspendedAt: null,
       deletedAt: null,
+      ...buildActivatedDiscoverTargetWhere(input.now),
     },
   };
+
+  const andClauses: Prisma.ActivityWhereInput[] = [];
 
   if (input.blockedHostIds.length > 0) {
     where.hostId = { notIn: input.blockedHostIds };
   }
   if (input.query.q) {
-    where.title = { contains: input.query.q, mode: "insensitive" };
+    andClauses.push({
+      OR: [
+        { title: { contains: input.query.q, mode: "insensitive" } },
+        {
+          host: {
+            is: {
+              profile: {
+                is: {
+                  OR: [
+                    { displayName: { contains: input.query.q, mode: "insensitive" } },
+                    { username: { contains: input.query.q, mode: "insensitive" } },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    });
   }
   if (input.query.category) {
     where.category = { slug: input.query.category };
@@ -49,16 +71,18 @@ export function buildDiscoverableActivitiesWhere(input: {
     where.mode = input.query.mode;
   }
   if (input.cursor) {
-    where.AND = [
-      {
-        OR: [
-          { startsAt: { gt: input.cursor.startsAt } },
-          {
-            AND: [{ startsAt: input.cursor.startsAt }, { id: { gt: input.cursor.id } }],
-          },
-        ],
-      },
-    ];
+    andClauses.push({
+      OR: [
+        { startsAt: { gt: input.cursor.startsAt } },
+        {
+          AND: [{ startsAt: input.cursor.startsAt }, { id: { gt: input.cursor.id } }],
+        },
+      ],
+    });
+  }
+
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
   }
 
   return where;

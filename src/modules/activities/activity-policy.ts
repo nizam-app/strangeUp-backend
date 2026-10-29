@@ -149,7 +149,11 @@ export function resolveJoinPath(input: {
   if (input.isHost) {
     return "host";
   }
-  if (input.existingState === "CONFIRMED" || input.existingState === "WAITLISTED") {
+  if (
+    input.existingState === "CONFIRMED" ||
+    input.existingState === "WAITLISTED" ||
+    input.existingState === "PENDING"
+  ) {
     return "already_joined";
   }
   if (!isJoinableStatus(input.status) || !input.upcoming) {

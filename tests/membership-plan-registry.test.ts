@@ -22,6 +22,6 @@ describe("membership plan catalog (Task 017)", () => {
     const club = listMembershipPlanOffers().find((p) => p.planId === "CLUB")!;
     expect(club.pricing).toBeNull();
     const applePay = club.features.find((f) => f.key === "apple_pay_checkout");
-    expect(applePay?.status).toBe("UNAVAILABLE");
+    expect(applePay?.status).toBe("DEFERRED");
   });
 });

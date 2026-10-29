@@ -32,10 +32,10 @@ function basicFeatures(): MembershipFeatureDto[] {
     {
       key: "monthly_activity_join_cap",
       label: "Monthly activity join cap (Figma: up to three)",
-      status: "POLICY_PENDING",
+      status: "NOT_CONFIGURED",
       enforced: false,
       figmaIllustrationOnly: true,
-      policyDependency: "D-08",
+      policyDependency: "D-08-04",
     },
     {
       key: "discovery_radius_limit",
@@ -107,12 +107,28 @@ function clubFeatures(): MembershipFeatureDto[] {
       policyDependency: "D-08",
     },
     {
-      key: "apple_pay_checkout",
-      label: "Apple Pay / in-app purchase checkout",
-      status: "UNAVAILABLE",
+      key: "subscription_checkout",
+      label: "Subscription checkout (Screen 18 → Html Body)",
+      status: "DEFERRED",
       enforced: false,
       requiresPlan: "CLUB",
-      policyDependency: "D-08/MKT-03",
+      policyDependency: "D-08-01/D-08-03",
+    },
+    {
+      key: "restore_purchases",
+      label: "Restore purchases",
+      status: "DEFERRED",
+      enforced: false,
+      requiresPlan: "CLUB",
+      policyDependency: "D-08-05",
+    },
+    {
+      key: "apple_pay_checkout",
+      label: "Apple Pay / store billing presentation",
+      status: "DEFERRED",
+      enforced: false,
+      requiresPlan: "CLUB",
+      policyDependency: "D-08-01",
     },
   ];
 }
@@ -181,7 +197,8 @@ export function planDisplayName(planId: MembershipPlanId): string {
 }
 
 export const UPGRADE_BLOCKED_REASONS = [
+  "OWNER_DEFERRED_ALL_PAYMENT_AND_SUBSCRIPTION_BILLING",
   "D-08_COMMERCIAL_TERMS_NOT_APPROVED",
   "BILLING_PROVIDER_NOT_CONFIGURED",
-  "CLUB_ENROLLMENT_COMING_SOON",
+  "CLUB_ENROLLMENT_NOT_PURCHASABLE",
 ] as const;

@@ -3,7 +3,7 @@ import type { AppEnv } from "../../config/env.js";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
-import { LocalStoreImageStorage } from "./store-image.storage.js";
+import { createStoreProductImageStorage } from "./store-product-image.storage.js";
 import { StoreCartService } from "./store-cart.service.js";
 import { StoreCatalogService } from "./store.service.js";
 import { StoreFavoriteService } from "./store-favorite.service.js";
@@ -23,7 +23,7 @@ function requireUser(req: AuthenticatedRequest) {
 }
 
 export function createStoreController(deps: { db: DatabaseClient; env: AppEnv }) {
-  const imageStorage = new LocalStoreImageStorage(deps.env.STORE_UPLOAD_DIR);
+  const imageStorage = createStoreProductImageStorage(deps.env);
   const catalog = new StoreCatalogService(deps.db, imageStorage);
   const favorites = new StoreFavoriteService(deps.db);
   const cart = new StoreCartService(deps.db);
@@ -31,6 +31,16 @@ export function createStoreController(deps: { db: DatabaseClient; env: AppEnv })
   return {
     listCategories: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       const data = await catalog.listCategories(requireUser(req));
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    getMerchandisePricingPolicy: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const data = await Promise.resolve(catalog.getMerchandisePricingPolicy(requireUser(req)));
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    getFulfillmentPolicy: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const data = await Promise.resolve(catalog.getFulfillmentPolicy(requireUser(req)));
       res.status(200).json({ data, meta: { requestId: req.requestId } });
     },
 

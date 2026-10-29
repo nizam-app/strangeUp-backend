@@ -67,6 +67,7 @@ paths:
                 groupMembershipEnabled: { type: boolean }
                 groupChatEnabled: { type: boolean }
                 activityUpdatesEnabled: { type: boolean }
+                meetupInvitesEnabled: { type: boolean }
                 marketingEnabled: { type: boolean }
       responses:
         "200": { description: Updated preferences }

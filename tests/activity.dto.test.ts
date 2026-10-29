@@ -25,6 +25,7 @@ const source = {
   capacity: 10,
   confirmedCount: 3,
   waitlistEnabled: true,
+  joinMode: "AUTO" as const,
   host: {
     userId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     displayName: "Alex",

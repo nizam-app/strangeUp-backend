@@ -8,6 +8,7 @@ import {
   assertCanArchive,
   assertCanTransfer,
   assertGroupAccess,
+  assertGroupActiveForMutation,
   countActiveMembers,
   groupPublicSelect,
   loadMembership,
@@ -366,6 +367,15 @@ export class GroupMembershipService {
   async decline(viewer: User, groupId: string, memberId: string): Promise<{ declined: true }> {
     assertGroupAccess(viewer);
     await this.db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT 1 FROM "CommunityGroup" WHERE "id" = ${groupId} FOR UPDATE`;
+      const group = await tx.communityGroup.findUnique({
+        where: { id: groupId },
+        select: { status: true },
+      });
+      if (!group) {
+        throw groupNotFound();
+      }
+      assertGroupActiveForMutation(group.status);
       const actor = await tx.communityMembership.findUnique({
         where: { groupId_userId: { groupId, userId: viewer.id } },
       });
@@ -407,8 +417,17 @@ export class GroupMembershipService {
 
   async remove(viewer: User, groupId: string, userId: string): Promise<{ removed: true }> {
     assertGroupAccess(viewer);
+    let removedUserId: string | null = null;
     await this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM "CommunityGroup" WHERE "id" = ${groupId} FOR UPDATE`;
+      const group = await tx.communityGroup.findUnique({
+        where: { id: groupId },
+        select: { status: true },
+      });
+      if (!group) {
+        throw groupNotFound();
+      }
+      assertGroupActiveForMutation(group.status);
       const actor = await tx.communityMembership.findUnique({
         where: { groupId_userId: { groupId, userId: viewer.id } },
       });
@@ -431,7 +450,14 @@ export class GroupMembershipService {
           respondedAt: new Date(),
         },
       });
+      removedUserId = target.userId;
     });
+    if (removedUserId) {
+      const { onUserLeftGroup } = await import(
+        "../messaging-realtime/messaging-realtime.lifecycle.js"
+      );
+      void onUserLeftGroup(removedUserId, groupId).catch(() => undefined);
+    }
     return { removed: true };
   }
 
@@ -444,6 +470,14 @@ export class GroupMembershipService {
     assertGroupAccess(viewer);
     return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM "CommunityGroup" WHERE "id" = ${groupId} FOR UPDATE`;
+      const group = await tx.communityGroup.findUnique({
+        where: { id: groupId },
+        select: { status: true },
+      });
+      if (!group) {
+        throw groupNotFound();
+      }
+      assertGroupActiveForMutation(group.status);
       const actor = await tx.communityMembership.findUnique({
         where: { groupId_userId: { groupId, userId: viewer.id } },
       });
@@ -478,6 +512,14 @@ export class GroupMembershipService {
     }
     return this.db.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT 1 FROM "CommunityGroup" WHERE "id" = ${groupId} FOR UPDATE`;
+      const group = await tx.communityGroup.findUnique({
+        where: { id: groupId },
+        select: { status: true },
+      });
+      if (!group) {
+        throw groupNotFound();
+      }
+      assertGroupActiveForMutation(group.status);
       const actor = await tx.communityMembership.findUnique({
         where: { groupId_userId: { groupId, userId: viewer.id } },
       });
@@ -508,6 +550,14 @@ export class GroupMembershipService {
     assertGroupAccess(viewer);
     const actor = await loadMembership(this.db, groupId, viewer.id);
     assertCanArchive(actor?.status === "ACTIVE" ? actor.role : null);
+    const current = await this.db.communityGroup.findUnique({
+      where: { id: groupId },
+      select: { status: true },
+    });
+    if (!current) {
+      throw groupNotFound();
+    }
+    assertGroupActiveForMutation(current.status);
     const group = await this.db.communityGroup.update({
       where: { id: groupId },
       data: { status: "ARCHIVED" },

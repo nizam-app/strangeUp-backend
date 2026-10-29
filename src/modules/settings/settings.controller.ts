@@ -32,7 +32,7 @@ export function createSettingsController(deps: {
   authService: AuthService;
   env: AppEnv;
 }) {
-  const overview = new SettingsOverviewService(deps.db);
+  const overview = new SettingsOverviewService(deps.db, deps.env);
   const deletionImpact = new AccountDeletionImpactService(deps.db);
   const sessions = new SecuritySessionsService(deps.db);
 

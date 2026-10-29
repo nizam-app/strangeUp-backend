@@ -1,0 +1,9 @@
+-- Task 028G: personal meetup invitation notification types + preference toggle
+
+ALTER TYPE "UserNotificationType" ADD VALUE IF NOT EXISTS 'MEETUP_INVITATION_RECEIVED';
+ALTER TYPE "UserNotificationType" ADD VALUE IF NOT EXISTS 'MEETUP_INVITATION_ACCEPTED';
+ALTER TYPE "UserNotificationType" ADD VALUE IF NOT EXISTS 'MEETUP_INVITATION_DECLINED';
+ALTER TYPE "UserNotificationType" ADD VALUE IF NOT EXISTS 'MEETUP_INVITATION_WITHDRAWN';
+
+ALTER TABLE "UserNotificationPreference"
+  ADD COLUMN IF NOT EXISTS "meetupInvitesEnabled" BOOLEAN NOT NULL DEFAULT true;

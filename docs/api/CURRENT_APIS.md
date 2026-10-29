@@ -1,6 +1,6 @@
 # StrangeUp Backend — Currently Implemented APIs
 
-**Last updated:** 2026-10-27 (through Task **021** — canonical consent + KYC verification; Tasks 019B/020 unchanged in behavior)
+**Last updated:** 2026-10-29 (Task **027I** activities closure; Task **028H** meetup **READY_FOR_OWNER_REVIEW**; Task **030** source audit — **178 LIVE REST routes** in `src/` match this doc; admin + webhook included)
 **Maintainers:** Update this file in the **same change** as any API implementation, modification, or removal. See `AGENTS.md`.
 
 **Flutter integration:** Pair with `docs/api/FLUTTER_DEVELOPER_HANDOFF.md`. **This file wins** on route existence and HTTP shapes; handoff wins on product gating and DEFERRED UX.
@@ -14,7 +14,7 @@
 **Base URL (local):** `http://localhost:3000` (default `PORT` from env)
 **Product API prefix:** `/v1`
 
-**OpenAPI:** `openapi/foundation.yaml` (health), `openapi/identity.yaml` (auth + self account/profile), `openapi/settings.yaml` (Task 015), `openapi/activities.yaml` (Task 010), `openapi/social.yaml` (Task 011), `openapi/groups.yaml` (Task 012), `openapi/messaging-realtime.yaml` (Task 023B Socket.IO), `openapi/push-devices.yaml` (Task 023C), `openapi/home.yaml` (Task 013), `openapi/notifications.yaml` (Task 013), `openapi/store.yaml` (Task 014), `openapi/jobs.yaml` (Task 014)
+**OpenAPI:** `openapi/foundation.yaml` (health), `openapi/identity.yaml` (auth + self account/profile), `openapi/settings.yaml` (Task 015), `openapi/activities.yaml` (Task 010), `openapi/social.yaml` (Task 011), `openapi/meetup-invites.yaml` (Task 028D), `openapi/groups.yaml` (Task 012), `openapi/group-content.yaml` (Task 016), `openapi/messaging-realtime.yaml` (Task 023B Socket.IO), `openapi/push-devices.yaml` (Task 023C), `openapi/home.yaml` (Task 013), `openapi/notifications.yaml` (Task 013), `openapi/store.yaml` (Task 014), `openapi/jobs.yaml` (Task 014), `openapi/membership.yaml` (Task 017), `openapi/admin.yaml` (Task 022B identity review + 024B store catalog staff)
 
 ---
 
@@ -50,6 +50,7 @@ Error:
 | Discover & profiles | `/v1/discover/*`, `/v1/users/*` | Discovery & public profiles |
 | Activities | `/v1/activities/*`, `/v1/me/activities/*`, categories | Activities & meetups |
 | Social & DM | `/v1/users/*` (follow, wave, messages) | Social connections |
+| Personal meetup invites | `/v1/meetup-invites` | Personal meetup invitations (028D–028G) |
 | Groups | `/v1/groups/*`, `/v1/me/groups/*`, categories | Groups & communities |
 | Home & feed | `/v1/home`, `/v1/me/community-feed` | Home dashboard |
 | Notifications | `/v1/me/notifications/*` | In-app notifications |
@@ -373,7 +374,7 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 - `profileVisibility` — `EVERYONE` or `VERIFIED_USERS_ONLY` (stored; **new profiles default `VERIFIED_USERS_ONLY`** per OWN-PROFILE-02; **not** enforced on public APIs until D-03)
 - `locationCity`, `locationRegion` — optional text (max **80** each); `null` clears; **no** geo coordinates or location-verification flag
 
-Unknown keys → `VALIDATION_ERROR` 400. Cannot set `birthDate`, `accountStatus`, `emailVerified`, roles, or ids via body. Username does not affect KYC, membership, or social access.
+Unknown keys → `VALIDATION_ERROR` 400. Cannot set `birthDate`, `accountStatus`, `emailVerified`, roles, or ids via body. **`firstName` / `lastName` rejected with `403 AUTH_FORBIDDEN` when `legalNameLocked` is true** (sticky after trusted KYC and/or staff identity approval audit — Tasks 025D/025E). Response includes `legalNameLocked` on `GET`/`PATCH`. Username does not affect KYC, membership, or social access.
 
 Suspended accounts: existing access tokens are rejected at auth (`401`, see I-N04); login returns `403 AUTH_FORBIDDEN`.
 
@@ -500,7 +501,7 @@ Returns all **10** options ordered by `sortOrder`. Custom/free-text interests ar
 
 **Viewer gate (all routes below):** Bearer token; viewer must satisfy `hasFullAccountAccess` → else `403 AUTH_FORBIDDEN`. Unauthenticated → `401`.
 
-**Target gate:** Eligible active users only; visibility + KYC rules; bidirectional blocks → generic `404 Not found` on detail/avatar (no existence leak). Hidden/blocked users omitted from discovery lists.
+**Target gate (Task 025B):** Main-app **activated** users only (`isDiscoverablePublicProfileTarget` — same bar as Task 022 Home); then `profileVisibility` + viewer KYC for `VERIFIED_USERS_ONLY`; bidirectional blocks → generic `404` on detail/avatar. Hidden/blocked/non-activated users omitted from lists.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -547,7 +548,7 @@ No total counts. Order: `createdAt` asc, `id` asc.
 
 Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-store`.
 
-**Tests:** `tests/public-profile-policy.test.ts`, `tests/discover-query.test.ts`; `tests/integration/discovery.integration.test.ts` (native DB gate).
+**Tests:** `tests/public-profile-policy.test.ts`, `tests/discover-query.test.ts`, `tests/discover-target-policy.test.ts`; `tests/integration/discovery.integration.test.ts` (T009 + T025B-P01/P02).
 
 **Deferred (Figma but not Task 009):** map, distance/radius, online presence. Follow/Wave/Message and DB-backed counts are Task 011.
 
@@ -566,14 +567,19 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/v1/activity-categories` | Managed activity catalog (not profile Interests) |
-| `GET` | `/v1/activities` | Published public upcoming list; cursor pagination; text/category/city/region/date/mode filters; **no geodistance** |
+| `GET` | `/v1/activities` | Published public upcoming list; hosts must be main-app activated (025C); cursor pagination; `q` on title or host name; category/city/region/date/mode filters; **no geodistance** |
 | `GET` | `/v1/activities/:activityId` | Public-safe detail (no meeting instructions) |
 | `GET` | `/v1/activities/:activityId/cover` | Authorized cover bytes when `hasCover` |
-| `GET` | `/v1/activities/:activityId/meeting` | Host or currently eligible confirmed participant only |
-| `POST` | `/v1/activities/:activityId/rsvp` | Join or waitlist |
-| `DELETE` | `/v1/activities/:activityId/rsvp` | Leave (idempotent); may promote waitlist head |
+| `GET` | `/v1/activities/:activityId/participants` | Task 027F — **CONFIRMED-only** attendee roster; **host** (manage-eligible) or **CONFIRMED** participant; D-03 previews; `preview=true` caps page size for avatar stack; cursor pagination; **404** if unauthorized (no IDOR) |
+| `GET` | `/v1/activities/:activityId/meeting` | Host or eligible confirmed participant; non-host **404** if host not discoverable (027C) |
+| `POST` | `/v1/activities/:activityId/rsvp` | **AUTO:** instant CONFIRMED or FIFO WAITLISTED (010). **HOST_APPROVAL:** creates **PENDING** (no meeting access); **404** when host not discoverable (025C); idempotent for CONFIRMED/WAITLISTED/PENDING |
+| `DELETE` | `/v1/activities/:activityId/rsvp` | Leave or withdraw PENDING (idempotent); confirmed leave may promote FIFO-eligible waitlist head |
+| `GET` | `/v1/me/activities/:activityId/join-requests` | Host-only pending/declined/approved-waitlist applicants (`status=pending\|declined\|waitlisted`); minimal D-03 profile |
+| `POST` | `/v1/me/activities/:activityId/join-requests/:userId/approve` | Host approve PENDING → CONFIRMED or approved WAITLISTED; **409** if full and waitlist off |
+| `POST` | `/v1/me/activities/:activityId/join-requests/:userId/decline` | Host decline PENDING → DECLINED (idempotent) |
 | `POST` | `/v1/me/activities` | Create **DRAFT** |
-| `GET` | `/v1/me/activities` | Host list (drafts/published/cancelled) |
+| `GET` | `/v1/me/activity-inventory` | Task 027B/027E — tabbed My Activities (`view=upcoming\|hosting\|joined\|waitlisted\|pending\|past`, optional `includeCounts`); **public cards only** |
+| `GET` | `/v1/me/activities` | Host list (drafts/published/cancelled); optional `when=upcoming\|past\|all` |
 | `GET` | `/v1/me/activities/:activityId` | Host detail including private meeting fields |
 | `PATCH` | `/v1/me/activities/:activityId` | Host-only allowlisted edits |
 | `POST` | `/v1/me/activities/:activityId/publish` | Host publish |
@@ -581,13 +587,17 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | `POST` | `/v1/me/activities/:activityId/cover` | Multipart field **`cover`** (same image hardening as avatars) |
 | `GET` | `/v1/me/activities/:activityId/cover` | Host cover bytes (including drafts) |
 | `DELETE` | `/v1/me/activities/:activityId/cover` | Clear cover |
-| `GET` | `/v1/me/activity-rsvps` | Self confirmed/waitlisted summaries |
+| `GET` | `/v1/me/activity-rsvps` | Self confirmed/waitlisted summaries; optional `when`, `participation=confirmed\|waitlisted\|active` |
 
 #### Public activity card / detail
 
-**Card allowlist:** `activityId`, `title`, `category{slug,label}`, `hasCover`, `startsAt`, `endsAt`, `timeZone`, `mode`, `status`, `venueName`, `locationCity`, `locationRegion`, `capacity`, `confirmedCount`, `spotsLeft`, `waitlistEnabled`, `host` (Task 009 preview; hidden/nulled when D-03 denies).
+**Card allowlist:** `activityId`, `title`, `category{slug,label}`, `hasCover`, `startsAt`, `endsAt`, `timeZone`, `mode`, `status`, `venueName`, `locationCity`, `locationRegion`, `capacity`, `confirmedCount`, `spotsLeft`, `waitlistEnabled`, `joinMode` (`AUTO` \| `HOST_APPROVAL`), `host` (Task 009 preview; hidden/nulled when D-03 denies).
 
-**Detail adds:** `description` (max 500 on write), `skillNotes`, `gearNotes`, `audience`, `myParticipation` (`state`, `waitlistPosition` or `null`), `meetingAvailable`.
+**Detail adds:** `description` (max 500 on write), `skillNotes`, `gearNotes`, `audience`, `myParticipation` (`state`, `waitlistPosition`, `joinMode`, `participationStatus`, `requestedAt`, `hostApprovedAt`), `meetingAvailable`.
+
+**Host detail adds:** `hostParticipationSummary` — `pendingRequestCount`, `confirmedSeatCount`, `approvedWaitlistedCount`, `declinedRequestCount` (Task 027E; do not mirror contradictory Figma Join Requests numbers — MDWQ-0712).
+
+**Draft create/patch:** optional `joinMode` (`AUTO` default); **locked after publish** (**409** if changed).
 
 **Never on public list/detail:** `meetingInstructions`, `virtualMeetingDetails`, storage keys, attendee identities, coordinates, ratings, “verified” counts.
 
@@ -626,6 +636,40 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 **Tests:** `tests/activity.validation.test.ts`, `tests/activity-policy.test.ts`, `tests/activity.dto.test.ts`, `tests/activity-query.test.ts`, `tests/activity-cover-storage.test.ts`; `tests/integration/activities.integration.test.ts` (native DB gate).
 
 **Deferred:** maps/distance, Followers-only publish, attendee roster, check-in, invitations, payments, two-hour edit lock, production cover storage.
+
+---
+
+### Personal meetup invitations (Task 028D–028H)
+
+**Policy:** D-28 (accepted foundation); independent of Activity RSVP / Task 027E.  
+**Product gate:** Backend **READY_FOR_OWNER_REVIEW** (`TASK_028H_FINAL_VERIFICATION_REPORT.md`); settings `capabilities.meetupInvites` remains **DEFERRED** until owner LIVE sign-off.  
+**OpenAPI:** `openapi/meetup-invites.yaml`  
+**Gate:** Bearer + **Task 022** `hasHomeAccess` on router. Sender **KYC** required on create; recipient **KYC** required on **accept**. Recipient must be discoverable + D-03 visible; blocks → generic `404`.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/meetup-invites` | Create `PENDING` invite; optional `Idempotency-Key` header |
+| `GET` | `/v1/meetup-invites` | Inbox/outgoing list; `box`, `status`, cursor pagination |
+| `GET` | `/v1/meetup-invites/:inviteId` | Detail for sender or recipient only |
+| `POST` | `/v1/meetup-invites/:inviteId/accept` | Recipient: `PENDING` → `ACCEPTED` (idempotent **200**) |
+| `POST` | `/v1/meetup-invites/:inviteId/decline` | Recipient: `PENDING` → `DECLINED` |
+| `POST` | `/v1/meetup-invites/:inviteId/withdraw` | Sender: `PENDING` → `WITHDRAWN` |
+
+**Create body:** `recipientUserId`, `meetupType` (`COFFEE` \| `ACTIVITY` \| `SPORTS` \| `OTHER`), `title`, `scheduledStartsAt` (ISO UTC), `scheduleTimeZone` (IANA), `venue` `{ city, region, label?, addressLine?, placeNotes? }`, optional `note` (max 200).
+
+**Mutations:** Empty body. Lazy expiry applied before transition. Both participants re-checked for Task 022 activation at mutation time. Repeat same terminal action → **200**; conflicting terminal action → **409** `CONFLICT`. Row lock + conditional `updateMany` on `PENDING` for concurrency. Sets `acceptedAt` / `declinedAt` / `withdrawnAt`. No Activity RSVP, DM, or group side effects.
+
+**List:** `counts.pending` for **incoming** box only (actionable PENDING). No notification read/unread on invite rows (use `/v1/me/notifications` when 028G ships). List cards **never** include `addressLine` / precise venue fields.
+
+**Detail venue:** Recipient sees city/region until `ACCEPTED` (including on accept response); sender always sees submitted venue. Lazy **EXPIRED** persisted on list/detail/mutations when `scheduledStartsAt` passed.
+
+**Errors:** `409` pending duplicate per ordered pair; `409` idempotency payload mismatch; `409` not actionable; `403` wrong actor / KYC / participant ineligible.
+
+**Notifications (028G):** On create / accept / decline / withdraw, persists `UserNotification` (+ push outbox when enabled). Types: `MEETUP_INVITATION_RECEIVED|ACCEPTED|DECLINED|WITHDRAWN`. Generic copy only; `sourceId` = invite id. Preference: `meetupInvitesEnabled` (default true) on `GET/PATCH /v1/me/notification-preferences`. Mark read via `/v1/me/notifications` — independent of invite status.
+
+**Deferred (028F+):** Reschedule; post-accept cancellation; rate-limit env quotas; settings `capabilities.meetupInvites` remains **DEFERRED** until 028H owner sign-off.
+
+**Tests:** `tests/meetup-invite-*.test.ts`; integration bundle through **028H** (`meetup-invite-schema-028c`, `028d`, `028e`, `028g-notifications`, `028h-final`).
 
 ---
 
@@ -697,7 +741,7 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | `GET` | `/v1/me/device-tokens` | Active device metadata for caller |
 | `DELETE` | `/v1/me/device-tokens/:deviceTokenId` | Revoke own device |
 | `GET` | `/v1/me/notification-preferences` | Read toggles; `deliveryStatus: PUSH_DISABLED` |
-| `PATCH` | `/v1/me/notification-preferences` | Partial preference update |
+| `PATCH` | `/v1/me/notification-preferences` | Partial update (`meetupInvitesEnabled`, DM, groups, activity, …) |
 
 **Tests:** `tests/integration/push-devices.integration.test.ts`.
 
@@ -723,22 +767,22 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | `GET` | `/v1/groups` | Discover ACTIVE summaries: `q`, `category`, `city`, `region`, `privacy`, `tag`, cursor |
 | `GET` | `/v1/groups/:groupId` | Public-safe header/About, `memberCount` from ACTIVE rows, `myMembership`, `canAccessContent` |
 | `GET` | `/v1/groups/:groupId/cover` | Cover bytes; PUBLIC+ACTIVE for any eligible viewer; otherwise members only |
-| `GET` | `/v1/me/groups` | Own ACTIVE/PENDING memberships |
+| `GET` | `/v1/me/groups` | Own memberships; query `view` (`all` \| `joined` \| `managed` \| `pending`), or legacy `status`/`role`, optional `q` on group name, cursor pagination |
 | `POST` | `/v1/me/groups` | Create + OWNER membership atomically (`201`) |
 | `GET` | `/v1/me/groups/:groupId/manage` | Owner/moderator summary (`pendingRequestCount`, `visiblePostCount`) |
-| `PATCH` | `/v1/me/groups/:groupId` | Allowlisted edits; privacy/capacity are owner-only |
-| `POST` | `/v1/me/groups/:groupId/cover` | Multipart field `cover`; Sharp 008A pipeline; **5MB** (Figma example 10MB) |
-| `DELETE` | `/v1/me/groups/:groupId/cover` | Remove cover |
-| `POST` | `/v1/groups/:groupId/join` | PUBLIC → ACTIVE; PRIVATE_APPROVAL → PENDING; `DECLINED`/`REMOVED` reapply as PENDING |
-| `DELETE` | `/v1/groups/:groupId/join` | Leave / cancel request; last owner → `403` |
+| `PATCH` | `/v1/me/groups/:groupId` | Allowlisted edits; privacy/capacity owner-only; **403** when group `ARCHIVED` (029C) |
+| `POST` | `/v1/me/groups/:groupId/cover` | Multipart field `cover`; Sharp 008A pipeline; **5MB** (Figma example 10MB); **403** if `ARCHIVED` |
+| `DELETE` | `/v1/me/groups/:groupId/cover` | Remove cover; **403** if `ARCHIVED` |
+| `POST` | `/v1/groups/:groupId/join` | PUBLIC → ACTIVE; PRIVATE_APPROVAL → PENDING; `DECLINED`/`REMOVED` reapply as PENDING; **403** if group `ARCHIVED` |
+| `DELETE` | `/v1/groups/:groupId/join` | Leave / cancel request; last owner → `403`; allowed on archived groups |
 | `GET` | `/v1/groups/:groupId/members` | Active members; D-03-safe previews; member-only |
 | `GET` | `/v1/me/groups/:groupId/join-requests` | Pending approvals |
-| `POST` | `/v1/me/groups/:groupId/join-requests/:memberId/approve` | Capacity-safe; idempotent if already ACTIVE |
-| `POST` | `/v1/me/groups/:groupId/join-requests/:memberId/decline` | Decline pending |
-| `POST` | `/v1/me/groups/:groupId/members/:userId/remove` | Cannot remove OWNER; mods cannot remove mods |
-| `POST` | `/v1/me/groups/:groupId/members/:userId/role` | Owner-only `{ "role": "MODERATOR" \| "MEMBER" }` |
-| `POST` | `/v1/me/groups/:groupId/transfer-ownership` | `{ "userId" }`; previous owner becomes MEMBER |
-| `POST` | `/v1/me/groups/:groupId/archive` | Owner-only; non-destructive |
+| `POST` | `/v1/me/groups/:groupId/join-requests/:memberId/approve` | Capacity-safe; idempotent if already ACTIVE; **403** if group `ARCHIVED` |
+| `POST` | `/v1/me/groups/:groupId/join-requests/:memberId/decline` | Decline pending; **403** if group `ARCHIVED` (029D) |
+| `POST` | `/v1/me/groups/:groupId/members/:userId/remove` | Cannot remove OWNER; mods cannot remove mods; **403** if `ARCHIVED`; evicts group socket (023) |
+| `POST` | `/v1/me/groups/:groupId/members/:userId/role` | Owner-only `{ "role": "MODERATOR" \| "MEMBER" }`; **403** if `ARCHIVED` |
+| `POST` | `/v1/me/groups/:groupId/transfer-ownership` | `{ "userId" }`; previous owner becomes MEMBER; **403** if `ARCHIVED` |
+| `POST` | `/v1/me/groups/:groupId/archive` | Owner-only; **403** if already `ARCHIVED` (029D) |
 | `GET` | `/v1/groups/:groupId/posts` | Member-only; pinned first |
 | `POST` | `/v1/groups/:groupId/posts` | `{ "body", "activityId?" }` text only |
 | `PATCH` | `/v1/groups/:groupId/posts/:postId` | Author body edit |
@@ -819,7 +863,9 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 **Stories:** `data.stories.status = "DEFERRED"` — no fake 24h story list.
 
-**Tests:** `tests/notification-cursor.test.ts`; `tests/integration/home.integration.test.ts` (T013-H01–H04).
+**Tests:** `tests/notification-cursor.test.ts`; `tests/integration/home.integration.test.ts` (T013-H01–H04); `tests/integration/main-flow-025a.integration.test.ts` (T025A-H01–H03 main-shell gate, blocks, truthful DTO).
+
+**Figma (Task 025A):** Shared vs updated-only Home actions — `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025A.md`; source manifest `design-reference/task025-main-flow/MANIFEST.md`.
 
 ---
 
@@ -893,13 +939,15 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/v1/store/categories` | Active category taxonomy |
-| `GET` | `/v1/store/products` | **PUBLISHED** products only; filters `q`, `category`, `size`, `color`; cursor pagination |
-| `GET` | `/v1/store/products/:productId` | Published detail + active variants (stock counts; no reservation) |
+| `GET` | `/v1/store/pricing-policy` | Merchandise pricing contract (024C): canonical model, `NOT_CONFIGURED` membership/shipping/tax, checkout `UNAVAILABLE` |
+| `GET` | `/v1/store/fulfillment-policy` | Physical fulfillment & order architecture (024D): `SHIPPING` / `ACTIVITY_PICKUP` capabilities, lifecycle spec, ADR-003 boundary |
+| `GET` | `/v1/store/products` | **PUBLISHED** products only; filters `q`, `category`, `size`, `color`; cursor pagination; `pricingHint` |
+| `GET` | `/v1/store/products/:productId` | Published detail + active variants + `variants[].pricing` + `merchandisePricingPolicy` (024C) |
 | `GET` | `/v1/store/products/:productId/images/:imageId` | Sanitized catalog bytes when file exists locally |
 | `GET` | `/v1/me/store/favorites` | Self favorites (published only) |
 | `PUT` | `/v1/me/store/favorites/:productId` | Idempotent favorite |
 | `DELETE` | `/v1/me/store/favorites/:productId` | Idempotent unfavorite |
-| `GET` | `/v1/me/store/cart` | Self cart + `subtotalCents` + `checkout.status=UNAVAILABLE` |
+| `GET` | `/v1/me/store/cart` | Self cart: 024A subtotals + 024C `pricingQuote` + 024D `fulfillment` + `orderReadiness`; `checkout.status=UNAVAILABLE` |
 | `PUT` | `/v1/me/store/cart/items/:variantId` | Set quantity (`0` removes); server catalog price only |
 | `DELETE` | `/v1/me/store/cart/items/:variantId` | Remove line |
 | `DELETE` | `/v1/me/store/cart` | Clear cart (no orders) |
@@ -916,7 +964,7 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/v1/jobs` | **PUBLISHED** open listings; filters; no distance/partner badges |
+| `GET` | `/v1/jobs` | **PUBLISHED** open listings; `q`, `employmentType`, `workMode`, `city`, `region`, `cursor`, `limit`; `q` composes with `cursor` (029F); invalid enums → **400**; no distance/partner badges |
 | `GET` | `/v1/jobs/:jobId` | Published detail |
 | `POST` | `/v1/jobs/:jobId/applications` | Applicant submit; `employerDelivery.status=NOT_CONFIGURED` |
 | `GET` | `/v1/me/saved-jobs` | Saved published jobs |
@@ -937,40 +985,42 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 | Method | Path | Auth | Status | Description |
 |---|---|---|---|---|
-| `GET` | `/v1/me/settings/overview` | Bearer | **LIVE** | Aggregated settings summary: profile header fields, account/phone read-only, honest `capabilities`, bounded counts, pointers to existing `/v1/me/*` routes |
+| `GET` | `/v1/me/settings/overview` | Bearer + **main app** | **LIVE** | Settings hub (Screen 26): profile header, `account` (`adminReviewStatus`, `legalNameLocked`, `fullAccess`, `identityVerificationStatus`), honest `capabilities`, DB-backed `counts`, `relatedRoutes` (Task 015/025D) |
 | `GET` | `/v1/me/account-deletion/impact` | Bearer | **LIVE** | Self-scoped dependency counts; `deletion.status` = `AWAITING_POLICY`; **no destructive delete** |
 | `GET` | `/v1/me/security/sessions` | Bearer | **LIVE** | Up to 50 active sessions (non-secret metadata; `isCurrent` when derivable) |
 | `DELETE` | `/v1/me/security/sessions/:sessionId` | Bearer | **LIVE** | Revoke own session (idempotent; cross-user → no-op) |
 | `POST` | `/v1/me/email-change/request` | Bearer | **DEV_ONLY** | Password reauth + pending challenge to **new** email; old email stays login until confirm; enumeration-safe `202`; **`403 FEATURE_DISABLED` when transactional email cannot hand off** (production `disabled` or missing provider) |
 | `POST` | `/v1/me/email-change/confirm` | Bearer | **DEV_ONLY** | Consume token; swap verified email; **revoke all sessions**; dev stub notifies prior email; **`403 FEATURE_DISABLED` when transactional email cannot hand off** |
-| `GET` | `/v1/me/saved-activities` | Bearer | **LIVE** | Cursor list of saved **Activity** entities (public cards only; omits blocked/unpublished/cancelled) |
-| `PUT` | `/v1/me/saved-activities/:activityId` | Bearer | **LIVE** | Idempotent save (published public activity; no RSVP side effect; no KYC for save) |
+| `GET` | `/v1/me/saved-activities` | Bearer | **LIVE** | Saved Activity public cards; omits blocked/unpublished/cancelled/**non-discoverable hosts** (027D); save rows preserved |
+| `PUT` | `/v1/me/saved-activities/:activityId` | Bearer | **LIVE** | Idempotent save when activity is publicly discoverable (025C host rule); **404** otherwise |
 | `DELETE` | `/v1/me/saved-activities/:activityId` | Bearer | **LIVE** | Idempotent unsave |
 
 **Reuse (unchanged):** `GET /v1/me/account`, `GET/PATCH /v1/me/profile`, `POST /v1/me/password-change`, `GET /v1/me/blocks`, `POST /v1/auth/logout`, `POST /v1/auth/logout-all`, activity/group/job routes referenced in overview `relatedRoutes`.
 
-**Gates:** Settings read uses `canAccessAccount` (pending + active). Saved activities, counts requiring full product access, and email-change **request** require verified email + age eligible (`hasFullAccountAccess`). Email-change **request** additionally requires password credential and verified email.
+**Gates:** `GET /v1/me/settings/overview` requires **Task 022 main-app access** (`403 ONBOARDING_REQUIRED` when pending). Account deletion impact and security sessions remain onboarding-safe. Saved activities, email-change **request**, and product counts require main-app access. Email-change **request** additionally requires password credential.
+
+**Figma (Task 025D):** `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025D.md`; tests `tests/integration/main-flow-025d.integration.test.ts`.
 
 **Not LIVE / honest DEFERRED in `capabilities`:** 2FA, subscription **billing/upgrade**, payment history, meetup invites hub, host ratings, 24/7 support, phone edit/verify, destructive account deletion. **`membershipPlanCatalog` is LIVE** (Task 017); overview also returns compact `membership` summary.
 
 ---
 
-### Membership plans & entitlements (Task 017, Screen 18)
+### Membership plans & entitlements (Task 017 / 026A, Screen 18)
 
 | Method | Path | Auth | Status | Description |
 |---|---|---|---|---|
-| `GET` | `/v1/membership/plans` | Bearer | **LIVE** | Bounded plan catalog: `BASIC` **AVAILABLE** (USD **0** monthly); `CLUB` **NOT_CONFIGURED**, not purchasable; feature rows with honest `AVAILABLE` / `NOT_IMPLEMENTED` / `POLICY_PENDING`; **`billingConfigured: false`** |
-| `GET` | `/v1/me/membership` | Bearer | **LIVE** | Self membership: default **`BASIC`/`FREE`**, `billingStatus: NOT_CONFIGURED`, `canUpgrade: false`, `entitlements` mirror catalog semantics; **no** trial/subscription/payment fields populated |
+| `GET` | `/v1/membership/plans` | Bearer + **Task 022 home access** | **LIVE** | Plan catalog (`BASIC` **AVAILABLE** USD **0**; `CLUB` **NOT_CONFIGURED**, not purchasable) + per-feature **`AVAILABLE` / `NOT_CONFIGURED` / `DEFERRED` / `NOT_IMPLEMENTED`** + versioned **`flow`** contract (billing/checkout **DEFERRED**, Figma pricing contradictions documented); **`billingConfigured: false`** |
+| `GET` | `/v1/me/membership` | Bearer + **Task 022 home access** | **LIVE** | Self membership: **`BASIC`/`FREE`**, `canUpgrade: false`, `entitlements` + same **`flow`**; trial/subscription/payment fields remain **null** |
 
-**Gates:** `canAccessAccount` (active or pending verification), self-only on `/v1/me/membership`.
+**Gates:** `canAccessAccount`; `/v1/me/membership` self-only; both routes behind main-app activation like other gated product APIs.
 
-**Not LIVE:** subscribe/upgrade/cancel, Stripe/Apple Pay intents, webhooks, invoices, manual plan grants, Club pricing/trial, enforcement of Figma RSVP/radius/premium perks.
+**Owner (2026-10-28):** All payment/subscription billing **DEFERRED** — no subscribe/upgrade/cancel, webhooks, receipts, ledger, or paid Club activation.
 
-**Settings integration:** `GET /v1/me/settings/overview` adds `membership` object and `relatedRoutes.membershipPlans` / `membership`; `capabilities.membershipPlanCatalog: LIVE`.
+**Settings integration:** `GET /v1/me/settings/overview` → `membership` summary; `capabilities.membershipPlanCatalog: LIVE`; `capabilities.subscription: DEFERRED`.
 
-**Source:** `src/modules/membership/*` (server-owned registry — **no DB migration** in Task 017)
+**Source:** `src/modules/membership/*` (**no DB migration**)
 
-**OpenAPI:** `openapi/membership.yaml` · Parity: `docs/product/FIGMA_MEMBERSHIP_PARITY_TASK017.md`
+**OpenAPI:** `openapi/membership.yaml` · Parity: `docs/product/FIGMA_MEMBERSHIP_PARITY_TASK026A.md` (supersedes Task 017 matrix for flow/checkout)
 
 **Distinct from Task 008:** `GET/PUT /v1/me/favorite-activities` remains **preference pins** (plain text), not Activity entity bookmarks.
 
@@ -1021,6 +1071,30 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 **Source:** `src/modules/admin/*`, migrations `20261028120000_task022a_admin_review_lifecycle`, `20261028140000_task022b_platform_staff_admin_review`
 
+### Store catalog management (Task 024B — staff only)
+
+**Auth:** Bearer + active `PlatformStaffGrant` role **`STORE_CATALOG_MANAGER`** (not `IDENTITY_REVIEWER`). **Feature flag:** `STORE_CATALOG_MANAGEMENT_ENABLED=true` required (default **false**; production fail-closed until MKT-01/02). Does **not** use main-app Home gate.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/admin/store-catalog/categories` | Active taxonomy for operators |
+| `GET` | `/v1/admin/store-catalog/products` | List products (all statuses; cursor) |
+| `POST` | `/v1/admin/store-catalog/products` | Create **DRAFT** product |
+| `GET` | `/v1/admin/store-catalog/products/:productId` | Operator detail (any status) |
+| `PATCH` | `/v1/admin/store-catalog/products/:productId` | Edit draft/published metadata |
+| `POST` | `/v1/admin/store-catalog/products/:productId/publish` | Publish when eligibility passes |
+| `POST` | `/v1/admin/store-catalog/products/:productId/archive` | Archive product |
+| `POST` | `/v1/admin/store-catalog/products/:productId/variants` | Create variant (unique SKU; size/color uniqueness among active) |
+| `PATCH` | `/v1/admin/store-catalog/products/:productId/variants/:variantId` | Update variant; optional `expectedUpdatedAt` for optimistic concurrency |
+| `PATCH` | `/v1/admin/store-catalog/products/:productId/variants/:variantId/stock` | Stock update (`expectedUpdatedAt` required) |
+| `POST` | `/v1/admin/store-catalog/products/:productId/images` | Multipart **`image`** ingest (processed JPEG/PNG/WebP) |
+| `PATCH` | `/v1/admin/store-catalog/products/:productId/images/:imageId` | Update `sortOrder` |
+| `DELETE` | `/v1/admin/store-catalog/products/:productId/images/:imageId` | Remove image + storage object |
+
+**Buyer routes unchanged:** `/v1/store/*`, cart (024A), favorites; `checkout.status=UNAVAILABLE`. Product images served only for **PUBLISHED** products via existing GET image route (private cache).
+
+**Ops:** `docs/operations/STORE_CATALOG_MANAGEMENT_TASK024B.md`
+
 **OpenAPI:** `openapi/admin.yaml`
 
 ---
@@ -1060,6 +1134,10 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 | Date | Change |
 |---|---|
+| 2026-10-29 | Task **030** — read-only route inventory vs `src/**/*.routes.ts` + `app.ts` mount table; no API gaps found; Flutter handoff header synced |
+| 2026-10-29 | Task **029H** — Task 029 closure documentation only (no route changes); final parity `FIGMA_GROUPS_JOBS_PARITY_TASK029H_FINAL.md` |
+| 2026-10-29 | Task **029F** — `GET /v1/jobs` search + cursor pagination fix (no new routes); Screen 23 parity doc `FIGMA_GROUPS_JOBS_PARITY_TASK029F.md` |
+| 2026-10-29 | Task **027I** — documentation reconciliation (no new routes): hybrid join, inventory `view=pending`, roster, 025C/saved-activity privacy; see `FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027I_FINAL.md` |
 | 2026-10-27 | Task 021 — canonical consent registry + validation; KYC verification sessions, mock webhook HMAC, trust metadata; Veriff blocked |
 | 2026-10-27 | Task 017 — membership plan catalog, self membership/entitlements, settings overview `membership` summary (D-08 billing deferred) |
 | 2026-10-27 | Task 015 — settings overview, saved activities, email change (DEV_ONLY), session inventory, deletion impact (non-destructive) |

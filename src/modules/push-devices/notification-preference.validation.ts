@@ -8,6 +8,7 @@ export const patchNotificationPreferenceBodySchema = z
     groupMembershipEnabled: z.boolean().optional(),
     groupChatEnabled: z.boolean().optional(),
     activityUpdatesEnabled: z.boolean().optional(),
+    meetupInvitesEnabled: z.boolean().optional(),
     marketingEnabled: z.boolean().optional(),
   })
   .strict()

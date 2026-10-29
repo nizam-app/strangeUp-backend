@@ -8,6 +8,7 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { hasFullAccountAccess, toPolicyActor } from "../policy/account-policy.js";
 import { groupForbidden, groupNotFound } from "./group-errors.js";
+import type { CommunityGroupStatus } from "../../../generated/prisma/client.js";
 import {
   canAccessGroupContent,
   canApproveMembership,
@@ -18,6 +19,12 @@ import {
   canTransferOwnership,
   isManagerRole,
 } from "./group-policy.js";
+
+export function assertGroupActiveForMutation(status: CommunityGroupStatus): void {
+  if (status !== "ACTIVE") {
+    throw groupForbidden("This group is archived");
+  }
+}
 
 export function assertGroupAccess(user: User): void {
   if (!hasFullAccountAccess(toPolicyActor(user))) {

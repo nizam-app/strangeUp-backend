@@ -138,4 +138,54 @@ describeDiscovery("integration: discovery & public profiles (Task 009)", () => {
     const res = await request(app).get("/v1/discover/people");
     expect(res.status).toBe(401);
   });
+
+  it("T025B-P01 email-verified pending activation never appears as discover target", async () => {
+    const viewer = await verifiedUser(app, emailSender, db, "t025b-viewer");
+    const pending = await verifiedUser(app, emailSender, db, "t025b-pending", {
+      mainAppAccess: false,
+    });
+    const tag = `t025bpending${Date.now()}`;
+    await db.profile.update({
+      where: { userId: pending.userId },
+      data: { displayName: tag },
+    });
+
+    const list = await request(app)
+      .get(`/v1/discover/people?q=${encodeURIComponent(tag)}`)
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(list.status).toBe(200);
+    expect(
+      list.body.data.people.some((p: { userId: string }) => p.userId === pending.userId),
+    ).toBe(false);
+
+    const detail = await request(app)
+      .get(`/v1/users/${pending.userId}`)
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(detail.status).toBe(404);
+  });
+
+  it("T025B-P02 provider-approved admin-pending user hidden from discover", async () => {
+    const viewer = await verifiedUser(app, emailSender, db, "t025b-v2");
+    const applicant = await verifiedUser(app, emailSender, db, "t025b-applicant", {
+      mainAppAccess: false,
+    });
+    const tag = `t025badminpending${Date.now()}`;
+    await db.profile.update({
+      where: { userId: applicant.userId },
+      data: { displayName: tag },
+    });
+
+    const { randomUUID } = await import("node:crypto");
+    const { seedProviderApprovedApplicant } = await import("../helpers/kyc-applicant.js");
+    const sessionId = randomUUID();
+    await seedProviderApprovedApplicant(db, applicant.userId, sessionId, `mock-ref-${sessionId}`);
+
+    const list = await request(app)
+      .get(`/v1/discover/people?q=${encodeURIComponent(tag)}`)
+      .set("Authorization", `Bearer ${viewer.accessToken}`);
+    expect(list.status).toBe(200);
+    expect(
+      list.body.data.people.some((p: { userId: string }) => p.userId === applicant.userId),
+    ).toBe(false);
+  });
 });

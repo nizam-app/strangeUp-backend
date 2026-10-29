@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
-  title: StrangeUp Membership Plans & Entitlements API (Task 017)
-  version: 0.1.0
+  title: StrangeUp Membership Plans & Entitlements API (Task 017 / 026A)
+  version: 0.2.0
   description: |
-    Screen 18 membership plans — honest catalog and self status only.
-    No subscribe, upgrade, trial-start, billing webhooks, or payment intents (D-08 / MKT-03 deferred).
+    Screen 18 membership plans — read-only catalog, self status, and versioned `flow` capability contract.
+    Owner 2026-10-28: defer ALL payment/subscription billing. No subscribe, upgrade, webhooks, or receipts.
+    Feature rows use AVAILABLE | NOT_CONFIGURED | DEFERRED | NOT_IMPLEMENTED.
 servers:
   - url: http://localhost:3000
 paths:
@@ -14,7 +15,7 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         "200":
-          description: BASIC available (free); CLUB NOT_CONFIGURED; no live Club pricing
+          description: plans[], billingConfigured false, flow contract (checkout DEFERRED)
         "401":
           description: Not authenticated
         "403":
@@ -25,7 +26,7 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         "200":
-          description: Default BASIC/FREE; billingStatus NOT_CONFIGURED; canUpgrade false
+          description: BASIC/FREE self status, entitlements, flow contract; canUpgrade false
         "401":
           description: Not authenticated
         "403":

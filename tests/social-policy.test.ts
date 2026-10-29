@@ -40,6 +40,14 @@ const kycApproved = {
   identityVerificationApprovedAt: new Date(),
 };
 const other = { ...eligible, userId: "22222222-2222-4222-8222-222222222222" };
+const activatedOther = {
+  ...other,
+  identityVerificationStatus: "APPROVED" as const,
+  identityVerificationApprovedAt: new Date(),
+  identityVerificationSessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+  adminReviewStatus: "APPROVED" as const,
+  adminReviewVerificationSessionId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+};
 
 describe("social policy", () => {
   it("rejects self-targets", () => {
@@ -49,9 +57,14 @@ describe("social policy", () => {
 
   it("requires D-03 visibility and no blocks to start contact", () => {
     expect(canInitiateSocialContact(eligible, other, "EVERYONE", false)).toBe(false);
-    expect(canInitiateSocialContact(activated, other, "EVERYONE", false)).toBe(true);
-    expect(canInitiateSocialContact(activated, other, "VERIFIED_USERS_ONLY", false)).toBe(true);
-    expect(canInitiateSocialContact(kycApproved, other, "VERIFIED_USERS_ONLY", false)).toBe(false);
+    expect(canInitiateSocialContact(activated, other, "EVERYONE", false)).toBe(false);
+    expect(canInitiateSocialContact(activated, activatedOther, "EVERYONE", false)).toBe(true);
+    expect(canInitiateSocialContact(activated, activatedOther, "VERIFIED_USERS_ONLY", false)).toBe(
+      true,
+    );
+    expect(canInitiateSocialContact(kycApproved, activatedOther, "VERIFIED_USERS_ONLY", false)).toBe(
+      false,
+    );
     expect(canInitiateSocialContact(eligible, other, "EVERYONE", true)).toBe(false);
     expect(canInitiateSocialContact(eligible, eligible, "EVERYONE", false)).toBe(false);
   });

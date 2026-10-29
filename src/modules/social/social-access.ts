@@ -37,6 +37,12 @@ const targetSelect = {
   suspendedAt: true,
   deletedAt: true,
   identityVerificationStatus: true,
+  identityVerificationApprovedAt: true,
+  identityVerificationValidUntil: true,
+  identityVerificationRevokedAt: true,
+  identityVerificationSessionId: true,
+  adminReviewStatus: true,
+  adminReviewVerificationSessionId: true,
   createdAt: true,
   profile: {
     select: {
@@ -58,6 +64,12 @@ export type SocialTargetRow = {
   suspendedAt: Date | null;
   deletedAt: Date | null;
   identityVerificationStatus: User["identityVerificationStatus"];
+  identityVerificationApprovedAt: Date | null;
+  identityVerificationValidUntil: Date | null;
+  identityVerificationRevokedAt: Date | null;
+  identityVerificationSessionId: string | null;
+  adminReviewStatus: User["adminReviewStatus"];
+  adminReviewVerificationSessionId: string | null;
   createdAt: Date;
   profile: {
     displayName: string | null;

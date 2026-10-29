@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: StrangeUp Activities API
-  version: 0.1.0
+  version: 0.3.0
   description: >
-    Task 010 activities and meetups. Public list/detail omit meeting instructions.
-    Real-world publish and confirmed RSVP require trusted KYC; production fails closed
-    until KYC_PROVIDER_ENABLED is true.
+    Task 010 activities; Task 027B inventory; Task 027E hybrid join mode (AUTO | HOST_APPROVAL).
+    Public list/detail omit meeting instructions. Real-world publish and confirmed RSVP
+    require trusted KYC; production fails closed until KYC_PROVIDER_ENABLED is true.
 servers:
   - url: http://localhost:3000
 paths:
@@ -71,6 +71,25 @@ paths:
       responses:
         "200": { description: Re-encoded image bytes }
         "404": { description: No cover or not visible }
+  /v1/activities/{activityId}/participants:
+    get:
+      summary: Task 027F — Confirmed attendee roster (host or confirmed participant)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: preview
+          schema: { type: string, enum: ["true", "false", "1", "0"] }
+      responses:
+        "200": { description: confirmedCount + attendee previews }
+        "401": { description: Unauthorized }
+        "404": { description: Activity hidden or viewer not authorized }
   /v1/activities/{activityId}/meeting:
     get:
       summary: Private meeting details
@@ -98,10 +117,46 @@ paths:
         - $ref: "#/components/parameters/ActivityId"
       responses:
         "200": { description: Left; may hold waitlist }
+  /v1/me/activity-inventory:
+    get:
+      summary: Task 027B — My Activities tabbed read model (no meeting instructions)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: view
+          required: true
+          schema:
+            type: string
+            enum: [upcoming, hosting, joined, waitlisted, pending, past]
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: includeCounts
+          schema: { type: string, enum: ["true", "false", "1", "0"] }
+      responses:
+        "200": { description: Inventory items and optional tab counts }
+        "403": { description: Task 022 onboarding required }
   /v1/me/activities:
     get:
       summary: Host-owned activities
       security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [DRAFT, PUBLISHED, CANCELLED, COMPLETED] }
+        - in: query
+          name: when
+          schema: { type: string, enum: [upcoming, past, all], default: all }
       responses:
         "200": { description: Host DTOs including private meeting fields }
     post:
@@ -115,6 +170,50 @@ paths:
               $ref: "#/components/schemas/CreateActivityRequest"
       responses:
         "201": { description: Draft created }
+  /v1/me/activities/{activityId}/join-requests:
+    get:
+      summary: Task 027E — Host list join requests
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - in: query
+          name: status
+          schema: { type: string, enum: [pending, declined, waitlisted], default: pending }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200": { description: Applicant rows with minimal profile }
+        "403": { description: Not host-approval activity }
+        "404": { description: Not owned }
+  /v1/me/activities/{activityId}/join-requests/{userId}/approve:
+    post:
+      summary: Approve pending join request
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Participation DTO }
+        "409": { description: At capacity or ineligible applicant }
+  /v1/me/activities/{activityId}/join-requests/{userId}/decline:
+    post:
+      summary: Decline pending join request
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Participation DTO }
   /v1/me/activities/{activityId}:
     get:
       summary: Host activity detail
@@ -181,8 +280,21 @@ paths:
     get:
       summary: Own confirmed and waitlisted activities
       security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: when
+          schema: { type: string, enum: [upcoming, past, all], default: all }
+        - in: query
+          name: participation
+          schema: { type: string, enum: [active, confirmed, waitlisted], default: active }
       responses:
-        "200": { description: Self RSVP summaries }
+        "200": { description: Self RSVP summaries (public cards only) }
 components:
   securitySchemes:
     bearerAuth:
@@ -220,6 +332,7 @@ components:
         gearNotes: { type: string, maxLength: 200 }
         capacity: { type: integer, minimum: 1, maximum: 500 }
         waitlistEnabled: { type: boolean }
+        joinMode: { type: string, enum: [AUTO, HOST_APPROVAL] }
     PatchActivityRequest:
       type: object
       additionalProperties: false
@@ -243,3 +356,4 @@ components:
         gearNotes: { type: string, nullable: true }
         capacity: { type: integer, minimum: 1, maximum: 500 }
         waitlistEnabled: { type: boolean }
+        joinMode: { type: string, enum: [AUTO, HOST_APPROVAL] }

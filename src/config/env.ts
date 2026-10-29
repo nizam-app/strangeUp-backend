@@ -111,6 +111,13 @@ const envSchema = z
     RESEND_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
     /** Comma-separated user UUIDs granted IDENTITY_REVIEWER (non-production bootstrap only). */
     PLATFORM_IDENTITY_REVIEWER_USER_IDS: z.string().optional(),
+    /** Task 024B — staff catalog CRUD/media ingest (default off; production fail-closed until MKT-01/02). */
+    STORE_CATALOG_MANAGEMENT_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    /** Comma-separated user UUIDs granted STORE_CATALOG_MANAGER (non-production bootstrap only). */
+    PLATFORM_STORE_CATALOG_MANAGER_USER_IDS: z.string().optional(),
     SOCKET_IO_ENABLED: z
       .enum(["true", "false"])
       .default("true")
@@ -224,6 +231,8 @@ const KNOWN_ENV_KEYS = [
   "RESEND_REQUEST_TIMEOUT_MS",
   "RESEND_MAX_RETRIES",
   "PLATFORM_IDENTITY_REVIEWER_USER_IDS",
+  "STORE_CATALOG_MANAGEMENT_ENABLED",
+  "PLATFORM_STORE_CATALOG_MANAGER_USER_IDS",
   "SOCKET_IO_ENABLED",
   "SOCKET_IO_PATH",
   "SOCKET_IO_REDIS_ADAPTER_ENABLED",

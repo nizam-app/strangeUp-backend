@@ -1,0 +1,135 @@
+openapi: 3.1.0
+info:
+  title: StrangeUp Personal Meetup Invitations API
+  version: 0.1.0
+  description: >
+    Task 028D–028E — direct 1:1 meetup invitations (create, inbox, detail, accept/decline/withdraw).
+    Not Activity RSVP (Task 027E).
+servers:
+  - url: http://localhost:3000
+paths:
+  /v1/meetup-invites:
+    post:
+      summary: Create a personal meetup invitation (PENDING)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMeetupInviteRequest"
+      responses:
+        "201": { description: Created }
+        "200": { description: Idempotent replay }
+        "400": { description: Validation error }
+        "403": { description: Activation or KYC gate }
+        "404": { description: Recipient not eligible or hidden }
+        "409": { description: Pending duplicate or idempotency conflict }
+    get:
+      summary: List meetup invitations (incoming or outgoing)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: box
+          schema: { type: string, enum: [incoming, outgoing], default: incoming }
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, accepted, declined, withdrawn, expired, all]
+            default: pending
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        "200": { description: Invite list with optional pending count (incoming) }
+  /v1/meetup-invites/{inviteId}:
+    get:
+      summary: Meetup invitation detail (sender or recipient)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/InviteId"
+      responses:
+        "200": { description: Detail with venue redaction rules }
+        "404": { description: Not found, blocked, or non-participant }
+  /v1/meetup-invites/{inviteId}/accept:
+    post:
+      summary: Accept invitation (recipient only, PENDING → ACCEPTED)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/InviteId"
+      responses:
+        "200": { description: Updated detail; idempotent when already ACCEPTED }
+        "403": { description: Wrong actor, KYC, or participant ineligible }
+        "404": { description: Not found, blocked, or non-participant }
+        "409": { description: Not actionable (expired or other terminal state) }
+  /v1/meetup-invites/{inviteId}/decline:
+    post:
+      summary: Decline invitation (recipient only, PENDING → DECLINED)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/InviteId"
+      responses:
+        "200": { description: Updated detail; idempotent when already DECLINED }
+        "403": { description: Wrong actor or participant ineligible }
+        "404": { description: Not found, blocked, or non-participant }
+        "409": { description: Not actionable }
+  /v1/meetup-invites/{inviteId}/withdraw:
+    post:
+      summary: Withdraw invitation (sender only, PENDING → WITHDRAWN)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/InviteId"
+      responses:
+        "200": { description: Updated detail; idempotent when already WITHDRAWN }
+        "403": { description: Wrong actor or participant ineligible }
+        "404": { description: Not found, blocked, or non-participant }
+        "409": { description: Not actionable }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    InviteId:
+      in: path
+      name: inviteId
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    CreateMeetupInviteRequest:
+      type: object
+      required:
+        - recipientUserId
+        - meetupType
+        - title
+        - scheduledStartsAt
+        - scheduleTimeZone
+        - venue
+      properties:
+        recipientUserId: { type: string, format: uuid }
+        meetupType:
+          type: string
+          enum: [COFFEE, ACTIVITY, SPORTS, OTHER]
+        title: { type: string, maxLength: 80 }
+        scheduledStartsAt: { type: string, format: date-time }
+        scheduleTimeZone: { type: string }
+        note: { type: string, maxLength: 200, nullable: true }
+        venue:
+          type: object
+          required: [city, region]
+          properties:
+            city: { type: string }
+            region: { type: string }
+            label: { type: string, nullable: true }
+            addressLine: { type: string, nullable: true }
+            placeNotes: { type: string, nullable: true }

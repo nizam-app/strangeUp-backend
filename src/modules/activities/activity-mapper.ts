@@ -21,6 +21,12 @@ export type ActivityWithRelations = Activity & {
     | "suspendedAt"
     | "deletedAt"
     | "identityVerificationStatus"
+    | "identityVerificationApprovedAt"
+    | "identityVerificationValidUntil"
+    | "identityVerificationRevokedAt"
+    | "identityVerificationSessionId"
+    | "adminReviewStatus"
+    | "adminReviewVerificationSessionId"
   > & {
     profile: Pick<
       Profile,
@@ -57,6 +63,7 @@ export const activityPublicSelect = {
   gearNotes: true,
   capacity: true,
   waitlistEnabled: true,
+  joinMode: true,
   publishedAt: true,
   cancelledAt: true,
   createdAt: true,
@@ -71,6 +78,12 @@ export const activityPublicSelect = {
       suspendedAt: true,
       deletedAt: true,
       identityVerificationStatus: true,
+      identityVerificationApprovedAt: true,
+      identityVerificationValidUntil: true,
+      identityVerificationRevokedAt: true,
+      identityVerificationSessionId: true,
+      adminReviewStatus: true,
+      adminReviewVerificationSessionId: true,
       profile: {
         select: {
           displayName: true,
@@ -110,6 +123,7 @@ export function toPublicActivitySource(
     capacity: row.capacity,
     confirmedCount,
     waitlistEnabled: row.waitlistEnabled,
+    joinMode: row.joinMode,
     host: {
       userId: row.host.id,
       displayName: hostProfile?.displayName ?? null,
@@ -126,15 +140,7 @@ export function hostPreviewForViewer(
   row: ActivityWithRelations,
   blockedEitherDirection: boolean,
 ) {
-  const hostSnapshot: DiscoverUserSnapshot = toDiscoverUserSnapshot({
-    id: row.host.id,
-    accountStatus: row.host.accountStatus,
-    emailVerifiedAt: row.host.emailVerifiedAt,
-    ageEligibilityStatus: row.host.ageEligibilityStatus,
-    suspendedAt: row.host.suspendedAt,
-    deletedAt: row.host.deletedAt,
-    identityVerificationStatus: row.host.identityVerificationStatus,
-  });
+  const hostSnapshot: DiscoverUserSnapshot = toDiscoverUserSnapshot(row.host);
   const visibility: ProfileVisibility =
     row.host.profile?.profileVisibility ?? "VERIFIED_USERS_ONLY";
   return toActivityHostPreview(

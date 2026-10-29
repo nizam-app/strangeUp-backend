@@ -1,16 +1,29 @@
 import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
+import type { AppEnv } from "../../config/env.js";
 import { canAccessAccount, hasFullAccountAccess, toPolicyActor } from "../policy/account-policy.js";
+import { resolveLegalNameLocked } from "../me/profile-identity-policy.js";
 import { SavedActivityService } from "../saved-activities/saved-activity.service.js";
 import { buildSettingsMembershipSummary } from "../membership/membership-entitlements.js";
 import { buildSettingsCapabilities } from "./settings-capabilities.js";
 
 export class SettingsOverviewService {
   private readonly savedActivities: SavedActivityService;
+  private readonly kyc: { isProduction: boolean; kycProviderEnabled: boolean };
 
-  constructor(private readonly db: DatabaseClient) {
-    this.savedActivities = new SavedActivityService(db);
+  constructor(
+    private readonly db: DatabaseClient,
+    env: AppEnv,
+  ) {
+    this.savedActivities = new SavedActivityService(db, {
+      isProduction: env.isProduction,
+      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
+    });
+    this.kyc = {
+      isProduction: env.isProduction,
+      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
+    };
   }
 
   async getOverview(user: User) {
@@ -99,7 +112,9 @@ export class SettingsOverviewService {
         phoneVerified: user.phoneVerifiedAt !== null,
         accountStatus: user.accountStatus,
         identityVerificationStatus: user.identityVerificationStatus,
+        adminReviewStatus: user.adminReviewStatus,
         fullAccess,
+        legalNameLocked: await resolveLegalNameLocked(this.db, user, this.kyc),
       },
       counts: {
         hostedUpcomingActivities: hostedUpcomingCount,
@@ -119,6 +134,7 @@ export class SettingsOverviewService {
         passwordChange: "POST /v1/me/password-change",
         blocks: "GET /v1/me/blocks",
         savedActivities: "GET /v1/me/saved-activities",
+        activityInventory: "GET /v1/me/activity-inventory",
         activityRsvps: "GET /v1/me/activity-rsvps",
         hostedActivities: "GET /v1/me/activities",
         groups: "GET /v1/me/groups",

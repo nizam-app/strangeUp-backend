@@ -1,6 +1,7 @@
 import type { Prisma } from "../../../generated/prisma/client.js";
 import { hasTrustedGovernmentIdKycApproved } from "../policy/public-profile-policy.js";
 import type { DiscoverUserSnapshot } from "../policy/public-profile-policy.js";
+import { buildActivatedDiscoverTargetWhere } from "./discover-target-policy.js";
 
 export function buildDiscoverableUsersWhere(
   viewer: DiscoverUserSnapshot,
@@ -11,6 +12,7 @@ export function buildDiscoverableUsersWhere(
     interestSlug?: string;
     cursor?: { createdAt: Date; id: string };
   },
+  now: Date = new Date(),
 ): Prisma.UserWhereInput {
   const viewerKycApproved = hasTrustedGovernmentIdKycApproved(viewer);
 
@@ -43,6 +45,7 @@ export function buildDiscoverableUsersWhere(
     ageEligibilityStatus: "ELIGIBLE",
     suspendedAt: null,
     deletedAt: null,
+    ...buildActivatedDiscoverTargetWhere(now),
     profile: { is: { AND: profileAnd } },
     blocksInitiated: { none: { blockedId: viewer.userId } },
     blocksReceived: { none: { blockerId: viewer.userId } },

@@ -1,5 +1,6 @@
 import type { User } from "../../../generated/prisma/client.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
+import type { ActivityKycEnforcementContext } from "../activities/activity-kyc.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
 import { toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { activityNotFound } from "../activities/activity-errors.js";
@@ -8,9 +9,9 @@ import {
   hostPreviewForViewer,
   toPublicActivitySource,
 } from "../activities/activity-mapper.js";
-import { isDiscoverableStatus } from "../activities/activity-policy.js";
 import { toPublicActivityCard } from "../activities/activity.dto.js";
 import { assertSavedActivitiesAccess } from "./saved-activity-access.js";
+import { isSavedActivityVisibleToViewer } from "./saved-activity-visibility.js";
 import { decodeSavedActivityCursor, encodeSavedActivityCursor } from "./saved-activity-cursor.js";
 import {
   SAVED_ACTIVITY_LIST_DEFAULT_LIMIT,
@@ -19,7 +20,10 @@ import {
 } from "./saved-activity.validation.js";
 
 export class SavedActivityService {
-  constructor(private readonly db: DatabaseClient) {}
+  constructor(
+    private readonly db: DatabaseClient,
+    private readonly kyc: ActivityKycEnforcementContext,
+  ) {}
 
   async listSaved(viewer: User, query: SavedActivityListQuery) {
     assertSavedActivitiesAccess(viewer);
@@ -63,10 +67,8 @@ export class SavedActivityService {
 
     for (const save of page) {
       const row = save.activity;
-      if (!isDiscoverableStatus(row.status) || row.audience !== "PUBLIC" || row.cancelledAt) {
-        continue;
-      }
-      if (blockedHostIds.includes(row.hostId)) {
+      const blocked = blockedHostIds.includes(row.hostId);
+      if (!isSavedActivityVisibleToViewer(row, blocked, this.kyc)) {
         continue;
       }
       const source = toPublicActivitySource(row, row._count.participations);
@@ -115,13 +117,13 @@ export class SavedActivityService {
   private async assertSavableActivity(viewer: User, activityId: string): Promise<void> {
     const row = await this.db.activity.findUnique({
       where: { id: activityId },
-      select: { id: true, hostId: true, status: true, audience: true, cancelledAt: true },
+      select: activityPublicSelect,
     });
-    if (!row || !isDiscoverableStatus(row.status) || row.audience !== "PUBLIC" || row.cancelledAt) {
+    if (!row) {
       throw activityNotFound();
     }
     const blocked = await isBlockedEitherDirection(this.db, viewer.id, row.hostId);
-    if (blocked) {
+    if (!isSavedActivityVisibleToViewer(row, blocked, this.kyc)) {
       throw activityNotFound();
     }
   }

@@ -17,6 +17,12 @@ export function createStoreRouter(deps: {
   router.get("/categories", authenticate, (req, res, next) => {
     void controller.listCategories(req, res).catch(next);
   });
+  router.get("/pricing-policy", authenticate, (req, res, next) => {
+    void controller.getMerchandisePricingPolicy(req, res).catch(next);
+  });
+  router.get("/fulfillment-policy", authenticate, (req, res, next) => {
+    void controller.getFulfillmentPolicy(req, res).catch(next);
+  });
   router.get("/products", authenticate, (req, res, next) => {
     void controller.listProducts(req, res).catch(next);
   });

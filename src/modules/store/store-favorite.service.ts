@@ -3,6 +3,10 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { assertStoreAccess } from "./store-access.js";
 import { mapProductDetail } from "./store.mapper.js";
+import {
+  buildStoreMerchandisePricingPolicy,
+  buildStoreProductPricingHint,
+} from "./store-pricing.service.js";
 
 const productInclude = {
   category: { select: { slug: true, label: true } },
@@ -26,8 +30,12 @@ export class StoreFavoriteService {
       orderBy: { createdAt: "desc" },
     });
 
+    const pricingHint = buildStoreProductPricingHint();
+    const merchandisePricingPolicy = buildStoreMerchandisePricingPolicy();
     return {
-      products: favorites.map((f) => mapProductDetail(f.product, true)),
+      products: favorites.map((f) =>
+        mapProductDetail(f.product, true, pricingHint, merchandisePricingPolicy),
+      ),
     };
   }
 

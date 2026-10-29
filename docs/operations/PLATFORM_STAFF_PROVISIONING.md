@@ -29,3 +29,17 @@ ON CONFLICT ("userId", "role") DO UPDATE SET "revokedAt" = NULL, "grantedAt" = N
 - Reviewers authenticate with the same Bearer session as mobile users; authorization is enforced in middleware **and** service layers.
 - Self-review of own identity is forbidden.
 - Mock KYC provider cannot be used to approve identities when `NODE_ENV=production`.
+
+---
+
+## Store catalog managers (Task 024B)
+
+Merchandise **catalog CRUD and image ingest** require role **`STORE_CATALOG_MANAGER`**. This is **independent** of `IDENTITY_REVIEWER`.
+
+See `docs/operations/STORE_CATALOG_MANAGEMENT_TASK024B.md` for API list, `STORE_CATALOG_MANAGEMENT_ENABLED` gate, and S3 migration notes.
+
+```sql
+INSERT INTO "PlatformStaffGrant" ("id", "userId", "role", "grantedAt")
+VALUES (gen_random_uuid(), '<staff-user-uuid>', 'STORE_CATALOG_MANAGER', NOW())
+ON CONFLICT ("userId", "role") DO UPDATE SET "revokedAt" = NULL, "grantedAt" = NOW();
+```

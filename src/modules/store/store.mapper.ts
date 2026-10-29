@@ -4,6 +4,12 @@ import type {
   StoreProductImage,
   StoreProductVariant,
 } from "../../../generated/prisma/client.js";
+import { buildStoreUnitPricing } from "./store-pricing.service.js";
+import type {
+  StoreMerchandisePricingPolicyDto,
+  StoreProductPricingHintDto,
+  StoreUnitPricingDto,
+} from "./store-pricing.types.js";
 
 export type StoreCategoryDto = {
   slug: string;
@@ -20,6 +26,7 @@ export type StoreProductVariantDto = {
   currency: string;
   stockQuantity: number;
   inStock: boolean;
+  pricing: StoreUnitPricingDto;
 };
 
 export type StoreProductImageDto = {
@@ -36,19 +43,24 @@ export type StoreProductSummaryDto = {
   priceFromCents: number | null;
   currency: string | null;
   isFavorited: boolean;
+  pricingHint: StoreProductPricingHintDto;
 };
 
 export type StoreProductDetailDto = StoreProductSummaryDto & {
   description: string;
   variants: StoreProductVariantDto[];
   images: StoreProductImageDto[];
+  merchandisePricingPolicy: StoreMerchandisePricingPolicyDto;
 };
 
 export function mapCategory(category: Pick<StoreCategory, "slug" | "label">): StoreCategoryDto {
   return { slug: category.slug, label: category.label };
 }
 
-export function mapVariant(variant: StoreProductVariant): StoreProductVariantDto {
+export function mapVariant(
+  variant: StoreProductVariant,
+  pricing: StoreUnitPricingDto,
+): StoreProductVariantDto {
   return {
     variantId: variant.id,
     sku: variant.sku,
@@ -59,6 +71,7 @@ export function mapVariant(variant: StoreProductVariant): StoreProductVariantDto
     currency: variant.currency,
     stockQuantity: variant.stockQuantity,
     inStock: variant.isActive && variant.stockQuantity > 0,
+    pricing,
   };
 }
 
@@ -73,6 +86,7 @@ export function summarizeProduct(
     images: StoreProductImage[];
   },
   isFavorited: boolean,
+  pricingHint: StoreProductPricingHintDto,
 ): StoreProductSummaryDto {
   const activeVariants = product.variants.filter((v) => v.isActive);
   const priced = activeVariants.filter((v) => v.priceCents >= 0);
@@ -90,6 +104,7 @@ export function summarizeProduct(
     priceFromCents: minPrice,
     currency,
     isFavorited,
+    pricingHint,
   };
 }
 
@@ -100,15 +115,27 @@ export function mapProductDetail(
     images: StoreProductImage[];
   },
   isFavorited: boolean,
+  pricingHint: StoreProductPricingHintDto,
+  merchandisePricingPolicy: StoreProductDetailDto["merchandisePricingPolicy"],
 ): StoreProductDetailDto {
-  const summary = summarizeProduct(product, isFavorited);
+  const summary = summarizeProduct(product, isFavorited, pricingHint);
   return {
     ...summary,
     description: product.description,
     variants: product.variants
       .filter((v) => v.isActive)
-      .map(mapVariant)
+      .map((v) =>
+        mapVariant(
+          v,
+          buildStoreUnitPricing({
+            listUnitPriceCents: v.priceCents,
+            compareAtUnitPriceCents: v.compareAtPriceCents,
+            currency: v.currency,
+          }),
+        ),
+      )
       .sort((a, b) => a.sku.localeCompare(b.sku)),
     images: [...product.images].sort((a, b) => a.sortOrder - b.sortOrder).map(mapImage),
+    merchandisePricingPolicy,
   };
 }

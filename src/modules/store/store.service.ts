@@ -3,8 +3,16 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { assertStoreAccess } from "./store-access.js";
 import { decodeStoreProductCursor, encodeStoreProductCursor } from "./store-cursor.js";
-import type { LocalStoreImageStorage } from "./store-image.storage.js";
+import type { StoreProductImageStorage } from "./store-product-image.storage.js";
 import { mapCategory, mapProductDetail, summarizeProduct } from "./store.mapper.js";
+import {
+  buildActivityPickupEligibilitySpec,
+  buildStoreFulfillmentPolicy,
+} from "../physical-commerce/physical-commerce-fulfillment.service.js";
+import {
+  buildStoreMerchandisePricingPolicy,
+  buildStoreProductPricingHint,
+} from "./store-pricing.service.js";
 import type { StoreProductListQuery } from "./store.validation.js";
 
 const productInclude = {
@@ -16,7 +24,7 @@ const productInclude = {
 export class StoreCatalogService {
   constructor(
     private readonly db: DatabaseClient,
-    private readonly imageStorage: LocalStoreImageStorage,
+    private readonly imageStorage: StoreProductImageStorage,
   ) {}
 
   async listCategories(user: User) {
@@ -26,6 +34,19 @@ export class StoreCatalogService {
       orderBy: [{ sortOrder: "asc" }, { slug: "asc" }],
     });
     return { categories: rows.map(mapCategory) };
+  }
+
+  getMerchandisePricingPolicy(user: User) {
+    assertStoreAccess(user);
+    return buildStoreMerchandisePricingPolicy();
+  }
+
+  getFulfillmentPolicy(user: User) {
+    assertStoreAccess(user);
+    return {
+      fulfillment: buildStoreFulfillmentPolicy(),
+      activityPickupEligibility: buildActivityPickupEligibilitySpec(),
+    };
   }
 
   async listProducts(user: User, query: StoreProductListQuery) {
@@ -99,8 +120,9 @@ export class StoreCatalogService {
           })
         : null;
 
+    const pricingHint = buildStoreProductPricingHint();
     return {
-      products: page.map((p) => summarizeProduct(p, favoriteIds.has(p.id))),
+      products: page.map((p) => summarizeProduct(p, favoriteIds.has(p.id), pricingHint)),
       nextCursor,
     };
   }
@@ -117,7 +139,13 @@ export class StoreCatalogService {
     const favorited = await this.db.storeFavorite.findUnique({
       where: { userId_productId: { userId: user.id, productId } },
     });
-    return mapProductDetail(product, favorited !== null);
+    const pricingHint = buildStoreProductPricingHint();
+    return mapProductDetail(
+      product,
+      favorited !== null,
+      pricingHint,
+      buildStoreMerchandisePricingPolicy(),
+    );
   }
 
   async getProductImage(user: User, productId: string, imageId: string) {

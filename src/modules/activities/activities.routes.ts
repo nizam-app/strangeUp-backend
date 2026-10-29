@@ -24,6 +24,9 @@ export function createActivitiesRouter(deps: {
   router.get("/:activityId/cover", authenticate, (req, res, next) => {
     void controller.getPublicCover(req, res).catch(next);
   });
+  router.get("/:activityId/participants", authenticate, (req, res, next) => {
+    void controller.listActivityParticipants(req, res).catch(next);
+  });
   router.get("/:activityId/meeting", authenticate, (req, res, next) => {
     void controller.getMeeting(req, res).catch(next);
   });
@@ -62,12 +65,32 @@ export function createMeActivitiesRouter(deps: {
   const authenticate = createAuthenticateMiddleware(deps.authService);
   const controller = createActivitiesControllers(deps);
 
+  router.get("/activity-inventory", authenticate, (req, res, next) => {
+    void controller.listMyActivityInventory(req, res).catch(next);
+  });
   router.get("/activities", authenticate, (req, res, next) => {
     void controller.listMine(req, res).catch(next);
   });
   router.post("/activities", authenticate, (req, res, next) => {
     void controller.createDraft(req, res).catch(next);
   });
+  router.get("/activities/:activityId/join-requests", authenticate, (req, res, next) => {
+    void controller.listHostJoinRequests(req, res).catch(next);
+  });
+  router.post(
+    "/activities/:activityId/join-requests/:userId/approve",
+    authenticate,
+    (req, res, next) => {
+      void controller.approveHostJoinRequest(req, res).catch(next);
+    },
+  );
+  router.post(
+    "/activities/:activityId/join-requests/:userId/decline",
+    authenticate,
+    (req, res, next) => {
+      void controller.declineHostJoinRequest(req, res).catch(next);
+    },
+  );
   router.get("/activities/:activityId", authenticate, (req, res, next) => {
     void controller.getMine(req, res).catch(next);
   });

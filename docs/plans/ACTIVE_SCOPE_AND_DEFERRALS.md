@@ -1,16 +1,18 @@
 # StrangeUp — Active Scope, Deferrals & Design Evidence Tracker
 
-**Updated:** 2026-10-27 (Task 021 KYC foundation + canonical consent)  
+**Updated:** 2026-10-29 (Task **030** audit complete — **031** Admin Panel proposed; Task **029** closed within scope; billing still deferred)  
 **Target market:** United States | **Minimum age:** 18+ | **Primary currency:** USD  
 
 **Team boundary:** This repository is **backend only**. Flutter lives in a separate repo; publish contracts via `CURRENT_APIS.md` and `FLUTTER_DEVELOPER_HANDOFF.md` — do not implement mobile UI here.
 
 ## 1. Source-of-truth & operating rules
 
-1. **Build the Figma-described backend for each flow.** For each vertical slice: design-screen evidence → flow and acceptance criteria → schema/policies → routes → tests → API handoff for the external Flutter developer.
+**Deferred-work index:** `docs/plans/MASTER_DEFERRED_WORK_QUEUE.md` is the single authoritative register of deferred, partial, owner-blocked, and release-blocking items across Tasks 001–026A. Update it whenever this tracker or task scope changes.
+
+1. **Build the Figma-described backend for each flow.** For each vertical slice: design-screen evidence → flow and acceptance criteria → schema/policies → routes → tests → API handoff for the external Flutter developer. **Task 027** after-membership activities: **closed** per `TASK_027I_FINAL_VERIFICATION_REPORT.md` (027G/H skipped; not full Figma parity).
 2. Existing approved product decisions, architecture decisions, and source code take precedence over assumptions in this tracker. Flag conflicts; do not silently overwrite approvals.
 3. The repository and executed tests establish implementation status. **Reports are evidence summaries, not a substitute for inspecting source.** Never call proposed APIs LIVE.
-4. **Design evidence:** `design-reference/` holds **13 focus PDFs** (onboarding, auth, edit profile, settings hub, public profile, discovery). Full ZIP manifest: `docs/source/FIGMA_EXPORT_VERIFICATION_2026-10-26.md`. Parity matrix: `docs/product/FIGMA_PROFILE_PARITY_MATRIX_2026-10-26.md`.
+4. **Design evidence:** `design-reference/` holds **13 focus PDFs** (onboarding, auth, edit profile, settings hub, public profile, discovery) plus **Task 027** package `design-reference/task027-activities-post-membership/` (5 PDFs — Activity Details, My Activities, Create Activity, Join Requests, section title). Manifest: same folder `MANIFEST.md`. Parity (closure): `docs/product/FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027I_FINAL.md` (027A matrix remains historical). Profile ZIP manifest: `docs/source/FIGMA_EXPORT_VERIFICATION_2026-10-26.md`; profile parity: `docs/product/FIGMA_PROFILE_PARITY_MATRIX_2026-10-26.md`.
 5. When adding/changing any API, synchronize `docs/api/CURRENT_APIS.md`, `docs/api/FLUTTER_DEVELOPER_HANDOFF.md`, relevant OpenAPI, tests, and `docs/plans/STATUS.md`.
 6. Keep this tracker short and update it **within each feature task**.
 7. Do not commit, push, deploy, or change production without explicit authorization.
@@ -33,18 +35,22 @@
 | Order | Slice | Notes |
 |---|---|---|
 | **DONE** | **Integration verification gate** | Neon `strangeup_test`; regression includes Tasks 006–015 after closure run |
-| **IMPLEMENTED** | **Store catalog, cart, favorites & jobs (Task 014)** | Screens 20–23; checkout/payment/employer delivery **DEFERRED** (MKT-03, JOB-02) |
+| **COMPLETE (audit)** | **Task 030 — backend completion & Admin readiness** | Reports in `docs/plans/TASK_030_*`, `ADMIN_PANEL_API_READINESS_MATRIX.md`, `BACKEND_REMAINING_WORK_CHECKLIST.md`; **no implementation** |
+| **NEXT (owner-gated)** | **Task 031 — React Admin Panel (separate repo)** | Reuse Task 022B `/v1/admin/identity-reviews/*`; see checklist §5 |
+| **COMPLETE (approved scope)** | **Groups & Jobs flow audit (Task 029A–H)** | 029B–D + 029F verified on Neon; **029E/029G SKIPPED** (queue open); parity `FIGMA_GROUPS_JOBS_PARITY_TASK029H_FINAL.md` — **not** full Figma / not prod-ready |
+| **IMPLEMENTED** | **Store catalog, cart, favorites & jobs (Task 014; 029F Screen 23 read)** | Screens 20–23; checkout/payment/employer delivery **DEFERRED** (MKT-03, JOB-02); job publish **MDWQ-0901**; no HTTP publish path |
 | **VERIFIED (Neon)** | **Home dashboard, feed & notifications (Task 013)** | Screen 08 + Notification.pdf; stories still deferred |
 | **VERIFIED (Neon)** | **Groups & Communities (Task 012)** | Screens 14/15/1/2 LIVE |
 | **IMPLEMENTED (disabled)** | **Group stories, photo posts & polls (Task 016)** | Routes + schema behind `GROUP_COMMUNITY_INTERACTIVE_ENABLED=false`; Home stories **DEFERRED**; D-06 owner gate |
 | **VERIFIED (Neon)** | **Social / Activities / Discovery (Tasks 009–011)** | Included in regression suite |
 | **VERIFIED (Neon)** | **Settings hub & account lifecycle (Task 015)** | Screen 26 overview, saved activities, sessions, email change DEV_ONLY; deletion impact only — **destructive delete DEFERRED** (SET-03) |
-| **IMPLEMENTED** | **Membership plans & entitlements (Task 017)** | Screen 18 catalog + self status; **no DB migration**; D-08 billing/Club enrollment **NOT_CONFIGURED**; settings overview `membership` summary |
+| **IMPLEMENTED** | **Membership plans & entitlements (Task 017 / 026A)** | Screen 18 read-only catalog + **`flow`** contract; **owner deferred all billing**; **no DB migration**; Club **not purchasable**; settings overview `membership` summary |
 | **IMPLEMENTED** | **Release hardening phase 1 (Task 018)** | Production env fail-closed; format drift diagnosis; LF `.gitattributes` — **not** production-ready alone |
 | **IMPLEMENTED** | **Auth email & distributed abuse protection (Tasks 019 / 019B)** | Resend + Upstash Redis adapters; default remains dev_stub/memory; **live production activation** requires deploy secrets + explicit deploy authorization |
 | **IMPLEMENTED** | **Production media storage (Task 020)** | S3-compatible private adapter; default local disk; API contracts unchanged (multipart fields + authenticated GET bytes); **live bucket activation** owner-gated — see `docs/operations/MEDIA_OBJECT_STORAGE.md` |
 | **VERIFIED (Neon)** | **KYC + canonical consent (Task 021)** | Registry + registration/job validation; verification sessions; HMAC webhooks (`mock` only in CI); counsel **ACTIVE** consent IDs still **DEFERRED**; Veriff **DEFERRED** until KYC-02 |
-| **NEXT** | **D-08 commercial approval + billing provider** **or** **D-06 owner activation** for Task 016 **or** checkout after MKT-03 | No fake prices/trials; enable interactive media only after D-06 sign-off |
+| **DEFERRED** | **D-08 billing / subscription (026B–026F)** | Owner 2026-10-28: no payment rails, ledger, or paid Club until re-authorized |
+| **NEXT** | **D-06 owner activation** for Task 016 **or** checkout after MKT-03 | No fake prices/trials; enable interactive media only after D-06 sign-off |
 | **CANCELLED** | Task 004 Flutter Edit Personal Details | Client work — separate Flutter repository (not this milestone) |
 | **NEXT** | Signup/register contract vs Figma Screen 06 | Backend requires DOB + consents (D-02); reconcile API docs if product changes register shape — **no Flutter work in this repo** |
 | **LIVE (MVP)** | Public profile / people discovery | Task 009 — authenticated reads only; favorites still private; geo/social **deferred** |

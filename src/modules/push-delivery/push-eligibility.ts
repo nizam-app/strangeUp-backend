@@ -19,6 +19,7 @@ const defaultPreference = {
   groupMembershipEnabled: true,
   groupChatEnabled: false,
   activityUpdatesEnabled: true,
+  meetupInvitesEnabled: true,
   marketingEnabled: false,
 };
 
@@ -39,6 +40,11 @@ export function notificationTypeAllowedByPreference(
     case "ACTIVITY_RSVP_WAITLISTED":
     case "ACTIVITY_WAITLIST_PROMOTED":
       return prefs.activityUpdatesEnabled;
+    case "MEETUP_INVITATION_RECEIVED":
+    case "MEETUP_INVITATION_ACCEPTED":
+    case "MEETUP_INVITATION_DECLINED":
+    case "MEETUP_INVITATION_WITHDRAWN":
+      return prefs.meetupInvitesEnabled;
     default:
       return false;
   }
@@ -96,6 +102,7 @@ export async function loadEligiblePushDevices(
         groupMembershipEnabled: prefRow.groupMembershipEnabled,
         groupChatEnabled: prefRow.groupChatEnabled,
         activityUpdatesEnabled: prefRow.activityUpdatesEnabled,
+        meetupInvitesEnabled: prefRow.meetupInvitesEnabled,
         marketingEnabled: prefRow.marketingEnabled,
       }
     : defaultPreference;

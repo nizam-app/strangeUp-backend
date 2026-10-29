@@ -14,7 +14,10 @@ paths:
         "401":
           description: AUTH_UNAUTHORIZED
         "403":
-          description: AUTH_FORBIDDEN
+          description: >-
+            Task 022 main-app denial — ONBOARDING_REQUIRED (pending pipeline) or
+            ACCOUNT_NOT_ACTIVATED (admin rejected); includes nextAction,
+            onboardingPhase, homeAccessAllowed false
   /v1/me/community-feed:
     get:
       summary: Cross-group community feed for active memberships

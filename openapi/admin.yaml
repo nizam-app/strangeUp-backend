@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: StrangeUp Admin API (Task 022B — backend only)
-  version: 0.1.0
-  description: Identity review queue for future Admin Panel. Requires PlatformStaffGrant IDENTITY_REVIEWER.
+  title: StrangeUp Admin API (Task 022B / 024B — backend only)
+  version: 0.2.0-task024b
+  description: Identity review (IDENTITY_REVIEWER) and store catalog ops (STORE_CATALOG_MANAGER + STORE_CATALOG_MANAGEMENT_ENABLED).
 servers:
   - url: http://localhost:3000
 paths:
@@ -84,6 +84,26 @@ paths:
         "400": { description: Invalid reason }
         "403": { description: Forbidden }
         "409": { description: Conflict }
+  /v1/admin/store-catalog/products:
+    get:
+      summary: List store products (operator; all statuses)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Product list }
+        "403": { description: FEATURE_DISABLED or not STORE_CATALOG_MANAGER }
+    post:
+      summary: Create DRAFT product
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Created }
+  /v1/admin/store-catalog/products/{productId}/publish:
+    post:
+      summary: Publish when eligibility passes
+      security: [{ bearerAuth: [] }]
+  /v1/admin/store-catalog/products/{productId}/images:
+    post:
+      summary: Ingest product image (multipart field image)
+      security: [{ bearerAuth: [] }]
 components:
   securitySchemes:
     bearerAuth:

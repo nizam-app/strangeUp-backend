@@ -1,6 +1,7 @@
 import type { Response } from "express";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
+import type { AppEnv } from "../../config/env.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { SavedActivityService } from "./saved-activity.service.js";
 import {
@@ -15,8 +16,11 @@ function requireUser(req: AuthenticatedRequest) {
   return req.authUser;
 }
 
-export function createSavedActivitiesController(deps: { db: DatabaseClient }) {
-  const service = new SavedActivityService(deps.db);
+export function createSavedActivitiesController(deps: { db: DatabaseClient; env: AppEnv }) {
+  const service = new SavedActivityService(deps.db, {
+    isProduction: deps.env.isProduction,
+    kycProviderEnabled: deps.env.KYC_PROVIDER_ENABLED,
+  });
 
   return {
     listSaved: async (req: AuthenticatedRequest, res: Response): Promise<void> => {

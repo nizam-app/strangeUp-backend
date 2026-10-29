@@ -19,8 +19,8 @@
 | D-04 | P0 | **APPROVED (MVP)*** | City/region text on public DTOs + non-geo filters — `D-04-location-discovery-mvp.md`; geo/distance **deferred** | maps, activity geo |
 | D-05 | P0 | **PARTIAL (Task 010)** | Conservative join/edit/cancel/waitlist-hold defaults shipped; see `D-ACTIVITIES-TASK010.md` | remaining cutoff, roster, skip-queue, Followers-only |
 | D-06 | P0 | **PARTIAL (Task 016)** | Group defaults (Task 012) + interactive media **implemented disabled**; see `D-06-COMMUNITY-MEDIA-TASK016.md` | owner activation, personal stories, production media/moderation |
-| D-07 | P0 | OPEN | Meetup eligibility and lifecycle (non-KYC aspects) | invitations, notifications |
-| D-08 | P0 | OPEN | Digital Club entitlements and billing | membership gates |
+| D-07 | P0 | **PARTIAL** | Meetup eligibility/lifecycle — **foundation accepted** D-28 (2026-10-29); REST/notifications/reschedule still open | `D-28-personal-meetup-invitation-2026-10-29.md`, MDWQ-0721, MDWQ-0506 |
+| D-08 | P0 | **OPEN (billing DEFERRED)** | Digital Club entitlements and billing — **owner 2026-10-28: defer all payment/subscription implementation**; read-only APIs LIVE | membership gates |
 | D-10 | P0 | OPEN | E2EE messaging claim | chat, marketing copy |
 | MKT-01 | P1 | **OPEN (PROVISIONAL)** | Platform-curated official merch vs P2P marketplace — Figma shows official gear store only | seller onboarding, payouts |
 | MKT-02 | P1 | **OPEN (PROVISIONAL)** | Who publishes products, stock, and “official” status — **trusted operator-only** until role model approved | catalog ingestion |
@@ -54,10 +54,11 @@
 | SET-03 | **OPEN** | Account deletion vs deactivation; grace period; third-party content; group ownership; jobs; media/legal hold | **No destructive endpoint** shipped; impact API returns counts + `AWAITING_POLICY` |
 | SET-04 | **OPEN** | Phone edit/verify without SMS transport | Read-only phone on overview/account; no write path |
 | SET-05 | **OPEN** | Support/legal URLs, 2FA, membership/billing surfacing | `capabilities.subscription`/`paymentHistory` DEFERRED; **`membershipPlanCatalog` LIVE** (Task 017) — billing upgrade still not LIVE |
+| SET-NAME-025D | **RESOLVED (engineering default)** | Self-serve legal name change after staff-approved identity binding | **`legalNameLocked` sticky** (Tasks 025D/025E); support/vendor correction only — owner may refine ops SLA |
 
 ## D-08 — Membership & commercial terms (owner checklist, Task 017)
 
-**Status:** OPEN — catalog/status APIs ship honest **NOT_CONFIGURED** billing; no charges, trials, or Club enrollment.
+**Status:** **Billing implementation DEFERRED (owner 2026-10-28, Task 026A).** Catalog/status APIs ship honest **NOT_CONFIGURED** billing; no charges, trials, or Club enrollment. Record: `docs/decisions/D-08-owner-defer-billing-2026-10-28.md`.
 
 | # | Decision required | Notes |
 |---|---|---|
@@ -69,6 +70,22 @@
 | D-08-06 | Consent & marketing | Canonical terms IDs; Apple Pay surfacing; accurate “verified” / member badge copy (KYC remains separate — D-09) |
 
 **Engineering until approved:** `GET /v1/membership/plans`, `GET /v1/me/membership`; `canUpgrade: false`; Club `pricing: null`; no subscription write APIs.
+
+## Task 027 — After Membership Activities (PROVISIONAL — 027A source audit)
+
+Figma package: `design-reference/task027-activities-post-membership/`. Parity matrix: `FIGMA_ACTIVITIES_POST_MEMBERSHIP_PARITY_TASK027A.md`. Master queue: MDWQ-0701, 0710–0713, 0704, 0702, 0703.
+
+| ID | Status | Decision required | Blocks |
+|---|---|---|---|
+| ACT-APPROVAL | **CLOSED** (D-09, 027E) | Hybrid `AUTO` \| `HOST_APPROVAL` | — |
+| ACT-CAPACITY | **OPEN** | Meaning of “Approved (8)” vs “6 of 10 spots filled” on same Join Requests frame | MDWQ-0712; use `hostParticipationSummary` in UI |
+| ACT-ROSTER | **CLOSED** (027F conservative) | Host + CONFIRMED participant roster; not public | — |
+| ACT-CHAT | **OPEN** | Activity “Message Group” vs existing community group chat | MDWQ-0711 |
+| ACT-FOLLOW | **OPEN** | Followers-only publish (see D-ACTIVITIES-TASK010) | MDWQ-0702 |
+| ACT-CUTOFF | **OPEN** | 2-hour edit/cancel before meetup (Create footer copy) | MDWQ-0703 |
+| ACT-CATALOG | **OPEN** | Seed Yoga / Social & Dining vs current five activity categories | MDWQ-0713 |
+
+**Engineering (027E shipped):** Hybrid join mode live per D-09. **Roster (027F):** do not implement until ACT-ROSTER owner sign-off (MDWQ-0717).
 
 ## Sign-off process
 

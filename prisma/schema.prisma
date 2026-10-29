@@ -43,6 +43,7 @@ enum StrangeUpAdminReviewStatus {
 
 enum PlatformStaffRole {
   IDENTITY_REVIEWER
+  STORE_CATALOG_MANAGER
 }
 
 enum VerificationProvider {
@@ -133,6 +134,8 @@ model User {
   wavesReceived      UserWave[]                  @relation("UserWavesReceived")
   messageRequestsSent     DirectMessageRequest[] @relation("MessageRequestsSent")
   messageRequestsReceived DirectMessageRequest[] @relation("MessageRequestsReceived")
+  meetupInvitesSent       PersonalMeetupInvitation[] @relation("MeetupInviteSender")
+  meetupInvitesReceived   PersonalMeetupInvitation[] @relation("MeetupInviteRecipient")
   conversationParticipations DirectConversationParticipant[]
   conversationsAsLow  DirectConversation[]       @relation("ConversationParticipantLow")
   conversationsAsHigh DirectConversation[]       @relation("ConversationParticipantHigh")
@@ -211,6 +214,7 @@ model UserNotificationPreference {
   groupMembershipEnabled   Boolean  @default(true)
   groupChatEnabled         Boolean  @default(false)
   activityUpdatesEnabled   Boolean  @default(true)
+  meetupInvitesEnabled     Boolean  @default(true)
   marketingEnabled         Boolean  @default(false)
   updatedAt                DateTime @updatedAt
 }
@@ -237,6 +241,13 @@ enum UserNotificationType {
   ACTIVITY_RSVP_CONFIRMED
   ACTIVITY_RSVP_WAITLISTED
   ACTIVITY_WAITLIST_PROMOTED
+  ACTIVITY_JOIN_REQUEST_RECEIVED
+  ACTIVITY_JOIN_REQUEST_APPROVED
+  ACTIVITY_JOIN_REQUEST_DECLINED
+  MEETUP_INVITATION_RECEIVED
+  MEETUP_INVITATION_ACCEPTED
+  MEETUP_INVITATION_DECLINED
+  MEETUP_INVITATION_WITHDRAWN
 }
 
 enum PushOutboxStatus {
@@ -441,9 +452,16 @@ enum ActivityAudience {
   FOLLOWERS_ONLY
 }
 
+enum ActivityJoinMode {
+  AUTO
+  HOST_APPROVAL
+}
+
 enum ActivityParticipationState {
   CONFIRMED
   WAITLISTED
+  PENDING
+  DECLINED
   CANCELLED
 }
 
@@ -480,6 +498,7 @@ model Activity {
   gearNotes             String?
   capacity              Int
   waitlistEnabled       Boolean          @default(false)
+  joinMode              ActivityJoinMode @default(AUTO)
   publishedAt           DateTime?
   cancelledAt           DateTime?
   createdAt             DateTime         @default(now())
@@ -504,6 +523,7 @@ model ActivityParticipation {
   user             User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   state            ActivityParticipationState
   waitlistPosition Int?
+  hostApprovedAt   DateTime?
   joinedAt         DateTime                    @default(now())
   cancelledAt      DateTime?
   updatedAt        DateTime                    @updatedAt
@@ -569,6 +589,57 @@ model DirectMessageRequest {
   @@unique([senderId, recipientId])
   @@index([recipientId, status, createdAt])
   @@index([senderId, status, createdAt])
+}
+
+/// Direct 1:1 meetup invitation (Task 028C). Independent of Activity RSVP / host approval (D-09).
+enum PersonalMeetupInviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum PersonalMeetupInviteType {
+  COFFEE
+  ACTIVITY
+  SPORTS
+  OTHER
+}
+
+model PersonalMeetupInvitation {
+  id                   String                     @id @default(uuid()) @db.Uuid
+  senderId             String                     @db.Uuid
+  sender               User                       @relation("MeetupInviteSender", fields: [senderId], references: [id], onDelete: Restrict)
+  recipientId          String                     @db.Uuid
+  recipient            User                       @relation("MeetupInviteRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+
+  status               PersonalMeetupInviteStatus
+  meetupType           PersonalMeetupInviteType
+  title                String
+  scheduledStartsAt    DateTime
+  scheduleTimeZone     String
+
+  venueCity            String
+  venueRegion          String
+  venueLabel           String?
+  venueAddressLine     String?
+  venuePlaceNotes      String?
+
+  note                 String?
+
+  createIdempotencyKey String?                    @unique
+
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  acceptedAt           DateTime?
+  declinedAt           DateTime?
+  withdrawnAt          DateTime?
+  expiredAt            DateTime?
+
+  @@index([recipientId, status, createdAt, id])
+  @@index([senderId, status, createdAt, id])
+  @@index([scheduledStartsAt])
 }
 
 model DirectConversation {

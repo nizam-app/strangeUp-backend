@@ -3,10 +3,20 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { assertStoreAccess } from "./store-access.js";
 import {
+  aggregateCartTotals,
+  resolveCartLineAvailability,
+  type CartLineAvailability,
+  type CartLineAvailabilityReason,
+} from "./store-cart-lines.js";
+import {
   STORE_CART_MAX_LINE_ITEMS,
   STORE_CART_MAX_QUANTITY,
   STORE_CHECKOUT_UNAVAILABLE,
+  STORE_SUBTOTAL_DISCLAIMER,
 } from "./store.constants.js";
+import { buildStoreCartFulfillmentQuote } from "../physical-commerce/physical-commerce-fulfillment.service.js";
+import { assessCartOrderReadiness } from "../physical-commerce/physical-commerce-order-readiness.js";
+import { buildStoreCartPricingQuote } from "./store-pricing.service.js";
 
 type CartLineDto = {
   variantId: string;
@@ -18,23 +28,13 @@ type CartLineDto = {
   quantity: number;
   unitPriceCents: number;
   lineSubtotalCents: number;
+  eligibleLineSubtotalCents: number;
+  maxPurchasableQuantity: number;
   currency: string;
   stockQuantity: number;
-  availability: "AVAILABLE" | "INSUFFICIENT_STOCK" | "UNAVAILABLE";
+  availability: CartLineAvailability;
+  availabilityReason: CartLineAvailabilityReason | null;
 };
-
-function lineAvailability(
-  quantity: number,
-  variant: { isActive: boolean; stockQuantity: number; product: { status: string } },
-): CartLineDto["availability"] {
-  if (variant.product.status !== "PUBLISHED" || !variant.isActive) {
-    return "UNAVAILABLE";
-  }
-  if (variant.stockQuantity < quantity) {
-    return "INSUFFICIENT_STOCK";
-  }
-  return "AVAILABLE";
-}
 
 export class StoreCartService {
   constructor(private readonly db: DatabaseClient) {}
@@ -114,21 +114,27 @@ export class StoreCartService {
       orderBy: { updatedAt: "desc" },
     });
 
-    let subtotalCents = 0;
     let currency: string | null = null;
     const lines: CartLineDto[] = [];
+    const computedForTotals: Parameters<typeof aggregateCartTotals>[0] = [];
 
     for (const item of items) {
       const v = item.variant;
-      const availability = lineAvailability(item.quantity, v);
-      const lineSubtotal = availability === "UNAVAILABLE" ? 0 : v.priceCents * item.quantity;
-      if (availability !== "UNAVAILABLE") {
-        subtotalCents += lineSubtotal;
+      const computed = resolveCartLineAvailability({
+        quantity: item.quantity,
+        unitPriceCents: v.priceCents,
+        currency: v.currency,
+        variant: v,
+      });
+
+      if (computed.availability !== "UNAVAILABLE") {
         currency = currency ?? v.currency;
         if (currency !== v.currency) {
           throw new AppError("VALIDATION_ERROR", "Mixed currencies in cart are not supported", 400);
         }
       }
+
+      computedForTotals.push(computed);
       lines.push({
         variantId: v.id,
         productId: v.product.id,
@@ -138,19 +144,47 @@ export class StoreCartService {
         colorLabel: v.colorLabel,
         quantity: item.quantity,
         unitPriceCents: v.priceCents,
-        lineSubtotalCents: lineSubtotal,
+        lineSubtotalCents: computed.lineSubtotalCents,
+        eligibleLineSubtotalCents: computed.eligibleLineSubtotalCents,
+        maxPurchasableQuantity: computed.maxPurchasableQuantity,
         currency: v.currency,
         stockQuantity: v.stockQuantity,
-        availability,
+        availability: computed.availability,
+        availabilityReason: computed.availabilityReason,
       });
     }
 
+    const totals = aggregateCartTotals(computedForTotals);
+    const orderReadiness = assessCartOrderReadiness(
+      lines.map((line) => ({
+        variantId: line.variantId,
+        availability: line.availability,
+        availabilityReason: line.availabilityReason,
+        quantity: line.quantity,
+        maxPurchasableQuantity: line.maxPurchasableQuantity,
+      })),
+    );
+
     return {
       items: lines,
-      subtotalCents,
+      subtotalCents: totals.subtotalCents,
+      linesSubtotalCents: totals.linesSubtotalCents,
       currency,
-      subtotalDisclaimer:
-        "Subtotal uses current catalog prices and excludes tax, shipping, pickup, and membership discounts.",
+      summary: {
+        eligibleLineCount: totals.eligibleLineCount,
+        ineligibleLineCount: totals.ineligibleLineCount,
+        hasInsufficientStock: totals.hasInsufficientStock,
+        hasUnavailableLines: totals.hasUnavailableLines,
+        allLinesPurchasable: totals.allLinesPurchasable,
+      },
+      pricingQuote: buildStoreCartPricingQuote({
+        userId,
+        catalogSubtotalCents: totals.subtotalCents,
+        currency,
+      }),
+      fulfillment: buildStoreCartFulfillmentQuote(),
+      orderReadiness,
+      subtotalDisclaimer: STORE_SUBTOTAL_DISCLAIMER,
       checkout: STORE_CHECKOUT_UNAVAILABLE,
     };
   }

@@ -1,5 +1,5 @@
 import type { Prisma } from "../../../generated/prisma/client.js";
-import type { GroupListQuery } from "./group.validation.js";
+import type { GroupListQuery, MyGroupListQuery } from "./group.validation.js";
 
 export function buildDiscoverableGroupsWhere(input: {
   query: GroupListQuery;
@@ -48,4 +48,44 @@ export function buildDiscoverableGroupsWhere(input: {
   }
 
   return where;
+}
+
+function myGroupsNameFilter(q: string | undefined): Prisma.CommunityMembershipWhereInput {
+  if (!q) {
+    return {};
+  }
+  return {
+    group: { name: { contains: q, mode: "insensitive" } },
+  };
+}
+
+/** Membership rows for GET /v1/me/groups (Task 012 + 029B inventory views). */
+export function buildMyMembershipWhere(input: {
+  userId: string;
+  query: MyGroupListQuery;
+}): Prisma.CommunityMembershipWhereInput {
+  const base: Prisma.CommunityMembershipWhereInput = {
+    userId: input.userId,
+    ...myGroupsNameFilter(input.query.q),
+  };
+
+  const view = input.query.view;
+  if (view === "pending") {
+    return { ...base, status: "PENDING" };
+  }
+  if (view === "joined") {
+    return { ...base, status: "ACTIVE", role: "MEMBER" };
+  }
+  if (view === "managed") {
+    return { ...base, status: "ACTIVE", role: { in: ["OWNER", "MODERATOR"] } };
+  }
+  if (view === "all") {
+    return { ...base, status: { in: ["ACTIVE", "PENDING"] } };
+  }
+
+  return {
+    ...base,
+    status: input.query.status ?? { in: ["ACTIVE", "PENDING"] },
+    ...(input.query.role ? { role: input.query.role } : {}),
+  };
 }

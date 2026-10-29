@@ -15,10 +15,12 @@ const viewer = {
 };
 
 describe("buildDiscoverableUsersWhere", () => {
-  it("excludes self and limits visibility to EVERYONE without KYC", () => {
+  it("excludes self, requires activation pre-filter, limits visibility without viewer KYC", () => {
     const where = buildDiscoverableUsersWhere(viewer, {});
     expect(where.id).toEqual({ not: viewer.userId });
     expect(where.profile).toBeDefined();
+    expect(where.adminReviewStatus).toBe("APPROVED");
+    expect(where.identityVerificationStatus).toBe("APPROVED");
   });
 
   it("includes VERIFIED_USERS_ONLY when viewer has KYC APPROVED", () => {

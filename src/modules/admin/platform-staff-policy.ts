@@ -2,6 +2,7 @@ import type { PlatformStaffRole, User } from "../../../generated/prisma/client.j
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 
 export const IDENTITY_REVIEWER_ROLE: PlatformStaffRole = "IDENTITY_REVIEWER";
+export const STORE_CATALOG_MANAGER_ROLE: PlatformStaffRole = "STORE_CATALOG_MANAGER";
 
 export async function userHasActivePlatformStaffRole(
   db: DatabaseClient,

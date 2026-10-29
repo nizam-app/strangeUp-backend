@@ -5,6 +5,7 @@ import { createAuthenticateMiddleware } from "../../common/middleware/authentica
 import type { AuthService } from "../auth/auth.service.js";
 import { createIdentityAdminReviewController } from "./identity-admin-review.controller.js";
 import { createRequireIdentityReviewerMiddleware } from "./require-identity-reviewer.middleware.js";
+import { createStoreCatalogAdminRouter } from "../store/store-catalog-admin.routes.js";
 
 export function createAdminRouter(deps: {
   db: DatabaseClient;
@@ -33,5 +34,6 @@ export function createAdminRouter(deps: {
   });
 
   router.use("/identity-reviews", identityReviews);
+  router.use("/store-catalog", createStoreCatalogAdminRouter(deps));
   return router;
 }

@@ -22,12 +22,15 @@ describe("membership entitlements (Task 017)", () => {
     expect(dto.subscription).toBeNull();
     expect(dto.nextBillingAt).toBeNull();
     expect(dto.paymentMethod).toBeNull();
+    expect(dto.flow.billing.status).toBe("DEFERRED");
+    expect(dto.flow.checkout.purchasable).toBe(false);
+    expect(dto.notes.communityGroupMembershipIndependent).toMatch(/CommunityGroup/i);
   });
 
   it("does not mark Figma-only caps as enforced", () => {
     const dto = buildSelfMembership("user-1");
     const cap = dto.entitlements.capabilities.find((c) => c.key === "monthly_activity_join_cap");
-    expect(cap?.status).toBe("POLICY_PENDING");
+    expect(cap?.status).toBe("NOT_CONFIGURED");
     expect(cap?.enforced).toBe(false);
     expect(cap?.figmaIllustrationOnly).toBe(true);
   });

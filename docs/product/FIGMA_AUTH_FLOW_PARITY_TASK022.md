@@ -46,7 +46,7 @@
 | Mask group | Flow label | **FLUTTER-ONLY** | Non-interactive |
 | *(Not in ZIP)* Email verification UX | — | **PARTIAL** | API LIVE; Figma UX **MISSING** from supplied export |
 | *(Not in ZIP)* Admin waiting / approved / rejected UI | — | **PARTIAL** | States via onboarding API; screens **MISSING** from ZIP |
-| *(Not in ZIP)* Home after approval | — | **DEFERRED** | `/v1/home` LIVE; owner to supply Home journey Figma later |
+| Main Flow Screen 08 (Home) | People/activities/featured, optional community update | **PARTIAL** | `/v1/home` LIVE; parity matrix `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025A.md` (Task 025A) |
 
 ---
 

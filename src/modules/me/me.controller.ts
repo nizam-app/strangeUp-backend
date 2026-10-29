@@ -19,7 +19,7 @@ export function createMeController(deps: {
   authService: AuthService;
   env: AppEnv;
 }) {
-  const meService = new MeService(deps.db);
+  const meService = new MeService(deps.db, deps.env);
 
   return {
     getAccount: async (req: AuthenticatedRequest, res: Response): Promise<void> => {

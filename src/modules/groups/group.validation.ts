@@ -84,14 +84,27 @@ export const groupListQuerySchema = z
   })
   .strict();
 
+export const myGroupInventoryViewSchema = z.enum(["all", "joined", "managed", "pending"]);
+
 export const myGroupListQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(GROUP_LIST_MAX_LIMIT).optional(),
     cursor: z.string().min(1).optional(),
+    /** Inventory tab preset; mutually exclusive with `status` / `role`. */
+    view: myGroupInventoryViewSchema.optional(),
     status: z.enum(["ACTIVE", "PENDING"]).optional(),
     role: z.enum(["OWNER", "MODERATOR", "MEMBER"]).optional(),
+    q: z.string().trim().min(1).max(GROUP_SEARCH_Q_MAX).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((body, ctx) => {
+    if (body.view !== undefined && (body.status !== undefined || body.role !== undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Use either view or status/role filters, not both",
+      });
+    }
+  });
 
 export const groupCursorListQuerySchema = z
   .object({

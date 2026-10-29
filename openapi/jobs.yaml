@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: StrangeUp Jobs API
-  version: 0.1.0-task014
+  version: 0.1.0-task029f
 paths:
   /v1/jobs:
     get:
-      summary: Published open job listings (no distance/partner badges)
+      summary: Published open job listings (no distance/partner badges; q composes with cursor)
       security:
         - bearerAuth: []
       parameters:

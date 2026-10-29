@@ -45,6 +45,34 @@ const GENERIC_COPY: Record<UserNotificationType, PushDisplayCopy> = {
     title: "Activity update",
     body: "Open StrangeUp for details",
   },
+  ACTIVITY_JOIN_REQUEST_RECEIVED: {
+    title: "Activity join request",
+    body: "Open StrangeUp to review",
+  },
+  ACTIVITY_JOIN_REQUEST_APPROVED: {
+    title: "Activity update",
+    body: "Open StrangeUp for details",
+  },
+  ACTIVITY_JOIN_REQUEST_DECLINED: {
+    title: "Activity update",
+    body: "Open StrangeUp for details",
+  },
+  MEETUP_INVITATION_RECEIVED: {
+    title: "Meetup invitation",
+    body: "Open StrangeUp for details",
+  },
+  MEETUP_INVITATION_ACCEPTED: {
+    title: "Meetup invitation accepted",
+    body: "Open StrangeUp for details",
+  },
+  MEETUP_INVITATION_DECLINED: {
+    title: "Meetup invitation declined",
+    body: "Open StrangeUp for details",
+  },
+  MEETUP_INVITATION_WITHDRAWN: {
+    title: "Meetup invitation withdrawn",
+    body: "Open StrangeUp for details",
+  },
 };
 
 export function buildPrivacySafePushPayload(input: {

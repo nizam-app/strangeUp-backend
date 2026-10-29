@@ -4,7 +4,67 @@ export type MembershipPlanId = (typeof MEMBERSHIP_PLAN_IDS)[number];
 export type PlanOfferAvailability = "AVAILABLE" | "COMING_SOON" | "NOT_CONFIGURED";
 
 export type EntitlementCapabilityStatus =
-  "AVAILABLE" | "UNAVAILABLE" | "NOT_IMPLEMENTED" | "POLICY_PENDING";
+  | "AVAILABLE"
+  | "NOT_CONFIGURED"
+  | "DEFERRED"
+  | "NOT_IMPLEMENTED";
+
+export type MembershipFlowDeferredStatus = "DEFERRED" | "NOT_CONFIGURED" | "UNAVAILABLE";
+
+export type MembershipFlowContractDto = {
+  contractVersion: string;
+  effectivePlan: {
+    source: "SERVER_DEFAULT";
+    defaultPlanId: MembershipPlanId;
+    trustedClubActivation: false;
+    clientPlanClaimsAccepted: false;
+  };
+  billing: {
+    status: "DEFERRED";
+    configured: false;
+    commercialTermsApproved: false;
+    ownerDecision: "DEFER_ALL_PAYMENT_AND_SUBSCRIPTION_BILLING_UNTIL_FURTHER_NOTICE";
+    deferredIntegrations: string[];
+  };
+  checkout: {
+    status: "DEFERRED";
+    purchasable: false;
+    trialStart: MembershipFlowDeferredStatus;
+    restorePurchases: MembershipFlowDeferredStatus;
+    paymentMethodCapture: MembershipFlowDeferredStatus;
+    subscriptionManagement: MembershipFlowDeferredStatus;
+  };
+  billingIntervalSelector: {
+    status: "DEFERRED";
+    note: string;
+    intervals: Array<{
+      interval: "MONTHLY" | "YEARLY";
+      basic: "AVAILABLE" | "NOT_APPLICABLE" | "NOT_CONFIGURED";
+      club: "NOT_CONFIGURED";
+    }>;
+  };
+  figmaEvidence: {
+    screen18MembershipPlans: "PARTIAL";
+    subscriptionCheckoutHtmlBody: "DEFERRED";
+    postPurchaseConfirmation: "NOT_PROVIDED";
+    billingManagementScreens: "NOT_PROVIDED";
+    knownPricingContradictions: string[];
+  };
+  domainSeparation: {
+    digitalMembershipBilling: "DEFERRED";
+    physicalMarketplaceCheckout: "UNAVAILABLE";
+    communityGroupMembership: "INDEPENDENT";
+    task022KycAdminGate: "INDEPENDENT";
+  };
+  capabilityStatusLegend: Record<EntitlementCapabilityStatus, string>;
+};
+
+export type MembershipPlansEnvelopeDto = {
+  plans: MembershipPlanOfferDto[];
+  billingConfigured: false;
+  commercialTermsApproved: false;
+  flow: MembershipFlowContractDto;
+};
 
 export type MembershipBillingStatus = "NOT_CONFIGURED";
 
@@ -57,9 +117,11 @@ export type SelfMembershipDto = {
   nextBillingAt: null;
   paymentMethod: null;
   entitlements: MembershipEntitlementsDto;
+  flow: MembershipFlowContractDto;
   notes: {
     identityVerificationIndependent: string;
     kycBadgeNotFromMembership: string;
+    communityGroupMembershipIndependent: string;
   };
 };
 

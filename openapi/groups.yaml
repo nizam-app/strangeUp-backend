@@ -58,12 +58,13 @@ paths:
         "404": { description: Hidden or missing }
   /v1/groups/{groupId}/join:
     post:
-      summary: Join PUBLIC immediately or request PRIVATE_APPROVAL
+      summary: Join PUBLIC immediately or request PRIVATE_APPROVAL (ACTIVE groups only)
       security: [{ bearerAuth: [] }]
       parameters:
         - $ref: "#/components/parameters/GroupId"
       responses:
         "200": { description: Membership or pending request }
+        "403": { description: Archived or closed group }
         "409": { description: At capacity }
     delete:
       summary: Leave or cancel own request (owner must transfer first)
@@ -189,10 +190,37 @@ paths:
         "404": { description: Missing, private, or unauthorized }
   /v1/me/groups:
     get:
-      summary: My ACTIVE and PENDING memberships
+      summary: My group membership inventory (Task 012 + 029B views)
       security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: view
+          description: >
+            Inventory tab preset. `all` (default when omitted) = ACTIVE + PENDING memberships;
+            `joined` = ACTIVE member role only; `managed` = ACTIVE owner or moderator;
+            `pending` = pending join requests. Mutually exclusive with `status` / `role`.
+          schema:
+            type: string
+            enum: [all, joined, managed, pending]
+        - in: query
+          name: status
+          schema: { type: string, enum: [ACTIVE, PENDING] }
+        - in: query
+          name: role
+          schema: { type: string, enum: [OWNER, MODERATOR, MEMBER] }
+        - in: query
+          name: q
+          description: Case-insensitive filter on related group name
+          schema: { type: string, maxLength: 80 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 50 }
       responses:
         "200": { description: My groups }
+        "400": { description: Mixed view and status/role filters }
     post:
       summary: Create group and OWNER membership atomically
       security: [{ bearerAuth: [] }]
@@ -200,10 +228,11 @@ paths:
         "201": { description: Created }
   /v1/me/groups/{groupId}:
     patch:
-      summary: Owner/moderator allowlisted edits
+      summary: Owner/moderator allowlisted edits (ACTIVE groups only)
       security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Updated }
+        "403": { description: Archived group, owner-only field, or capacity below active count }
   /v1/me/groups/{groupId}/manage:
     get:
       summary: Owner/moderator management summary
@@ -212,15 +241,17 @@ paths:
         "200": { description: Manage DTO }
   /v1/me/groups/{groupId}/cover:
     post:
-      summary: Multipart field cover (JPEG/PNG/WebP, 5MB)
+      summary: Multipart field cover (JPEG/PNG/WebP, 5MB; ACTIVE groups only)
       security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Updated }
+        "403": { description: Archived group or not a manager }
     delete:
-      summary: Remove cover
+      summary: Remove cover (ACTIVE groups only)
       security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Deleted }
+        "403": { description: Archived group or not a manager }
   /v1/me/groups/{groupId}/join-requests:
     get:
       summary: Pending requests
@@ -229,17 +260,19 @@ paths:
         "200": { description: Requests }
   /v1/me/groups/{groupId}/join-requests/{memberId}/approve:
     post:
-      summary: Approve pending request
+      summary: Approve pending request (ACTIVE groups only)
       security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Active member }
+        "403": { description: Archived group }
         "409": { description: Capacity or invalid state }
   /v1/me/groups/{groupId}/join-requests/{memberId}/decline:
     post:
-      summary: Decline pending request
+      summary: Decline pending request (ACTIVE groups only)
       security: [{ bearerAuth: [] }]
       responses:
         "200": { description: Declined }
+        "403": { description: Archived group }
   /v1/me/groups/{groupId}/members/{userId}/remove:
     post:
       summary: Moderate an active member

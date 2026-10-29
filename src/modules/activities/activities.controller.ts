@@ -4,14 +4,21 @@ import type { AuthenticatedRequest } from "../../common/middleware/authenticate.
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { createAppMediaStorages } from "../../infrastructure/media-storage/create-media-storages.js";
+import { ActivityHostJoinRequestsService } from "./activity-host-join-requests.service.js";
 import { ActivityHostService } from "./activity-host.service.js";
+import { ActivityRosterService } from "./activity-roster.service.js";
+import { ActivityMyInventoryService } from "./activity-my-inventory.service.js";
 import { ActivityRsvpService } from "./activity-rsvp.service.js";
 import { ActivityService } from "./activity.service.js";
 import {
   activityIdParamSchema,
   activityListQuerySchema,
+  activityRosterQuerySchema,
   createActivityBodySchema,
   hostActivityListQuerySchema,
+  hostJoinRequestListQuerySchema,
+  hostJoinRequestUserParamSchema,
+  myActivityInventoryQuerySchema,
   myRsvpListQuerySchema,
   patchActivityBodySchema,
 } from "./activity.validation.js";
@@ -25,6 +32,9 @@ export function createActivitiesControllers(deps: { db: DatabaseClient; env: App
   const activityService = new ActivityService(deps.db, mediaStorages.activityCover, kyc);
   const hostService = new ActivityHostService(deps.db, mediaStorages.activityCover, kyc);
   const rsvpService = new ActivityRsvpService(deps.db, kyc);
+  const inventoryService = new ActivityMyInventoryService(deps.db);
+  const joinRequestsService = new ActivityHostJoinRequestsService(deps.db, kyc);
+  const rosterService = new ActivityRosterService(deps.db);
 
   function requireUser(req: AuthenticatedRequest) {
     if (!req.authUser) {
@@ -69,6 +79,20 @@ export function createActivitiesControllers(deps: { db: DatabaseClient; env: App
       res.setHeader("Content-Type", contentType);
       res.setHeader("Cache-Control", "private, no-store");
       res.status(200).send(buffer);
+    },
+
+    listActivityParticipants: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { activityId } = activityIdParamSchema.parse(req.params);
+      const query = activityRosterQuerySchema.parse(req.query);
+      const result = await rosterService.listConfirmedRoster(requireUser(req), activityId, query);
+      res.status(200).json({
+        data: {
+          activityId: result.activityId,
+          confirmedCount: result.confirmedCount,
+          attendees: result.attendees,
+        },
+        meta: { requestId: req.requestId, nextCursor: result.nextCursor },
+      });
     },
 
     rsvp: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
@@ -156,6 +180,40 @@ export function createActivitiesControllers(deps: { db: DatabaseClient; env: App
         data: { rsvps: result.rsvps },
         meta: { requestId: req.requestId, nextCursor: result.nextCursor },
       });
+    },
+
+    listMyActivityInventory: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const query = myActivityInventoryQuerySchema.parse(req.query);
+      const result = await inventoryService.list(requireUser(req), query);
+      res.status(200).json({
+        data: {
+          items: result.items,
+          ...(result.counts ? { counts: result.counts } : {}),
+        },
+        meta: { requestId: req.requestId, nextCursor: result.nextCursor },
+      });
+    },
+
+    listHostJoinRequests: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { activityId } = activityIdParamSchema.parse(req.params);
+      const query = hostJoinRequestListQuerySchema.parse(req.query);
+      const result = await joinRequestsService.listPending(requireUser(req), activityId, query);
+      res.status(200).json({
+        data: { requests: result.requests },
+        meta: { requestId: req.requestId, nextCursor: result.nextCursor },
+      });
+    },
+
+    approveHostJoinRequest: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { activityId, userId } = hostJoinRequestUserParamSchema.parse(req.params);
+      const data = await joinRequestsService.approve(requireUser(req), activityId, userId);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
+    },
+
+    declineHostJoinRequest: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      const { activityId, userId } = hostJoinRequestUserParamSchema.parse(req.params);
+      const data = await joinRequestsService.decline(requireUser(req), activityId, userId);
+      res.status(200).json({ data, meta: { requestId: req.requestId } });
     },
   };
 }

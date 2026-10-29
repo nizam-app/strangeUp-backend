@@ -1,3 +1,4 @@
+import { buildMembershipFlowContract } from "./membership-flow-contract.js";
 import { listMembershipPlanOffers, planDisplayName } from "./membership-plan-registry.js";
 import type {
   MembershipEntitlementsDto,
@@ -44,11 +45,14 @@ export function buildSelfMembership(userId: string): SelfMembershipDto {
     nextBillingAt: null,
     paymentMethod: null,
     entitlements: entitlementsForPlan(planId),
+    flow: buildMembershipFlowContract(),
     notes: {
       identityVerificationIndependent:
-        "Government ID verification (Task 010 KYC) is independent of membership tier.",
+        "Government ID verification (Task 022 KYC + admin activation) is independent of membership tier.",
       kycBadgeNotFromMembership:
         "Do not show a verified ID badge based on membership; KYC approval requires a trusted provider.",
+      communityGroupMembershipIndependent:
+        "CommunityGroup membership (Task 012) is not paid BASIC/CLUB subscription billing.",
     },
   };
 }
