@@ -80,6 +80,12 @@ export function assertProductionEnvironmentSafe(env: AppEnv, jwtSecret: string):
     violations.push("KYC_PROVIDER=mock is not allowed in production");
   }
 
+  if (env.KYC_IDENTITY_AUTHORITY === "manual" || env.KYC_MANUAL_REVIEW_ENABLED) {
+    violations.push(
+      "Manual KYC / Cloudinary evidence must remain disabled in production until owner approves (Task 031I-M1)",
+    );
+  }
+
   if (env.PUSH_ENABLED) {
     violations.push(
       "PUSH_ENABLED must remain false in production until Task 023D Firebase delivery is authorized",
@@ -89,6 +95,12 @@ export function assertProductionEnvironmentSafe(env: AppEnv, jwtSecret: string):
   if (env.SOCKET_IO_REDIS_ADAPTER_ENABLED) {
     violations.push(
       "SOCKET_IO_REDIS_ADAPTER_ENABLED must remain false until Redis adapter security review completes",
+    );
+  }
+
+  if (env.PLATFORM_SUPER_ADMIN_USER_IDS?.trim()) {
+    violations.push(
+      "PLATFORM_SUPER_ADMIN_USER_IDS must not be set in production; use controlled staff provisioning",
     );
   }
 

@@ -14,6 +14,7 @@ import {
 export const DEFAULT_KYC_ENFORCEMENT_CONTEXT: KycEnforcementContext = {
   isProduction: false,
   kycProviderEnabled: false,
+  kycManualReviewEnabled: false,
 };
 
 export type ActivationPolicyActor = {
@@ -78,7 +79,6 @@ function isAccountTerminalBlocked(actor: ActivationPolicyActor): boolean {
 function hasBaseAccountEligibility(actor: ActivationPolicyActor): boolean {
   return (
     actor.accountStatus === "ACTIVE" &&
-    actor.emailVerifiedAt !== null &&
     actor.ageEligibilityStatus === "ELIGIBLE" &&
     !isAccountTerminalBlocked(actor)
   );
@@ -185,7 +185,7 @@ export function computeEffectiveApplicationAccess(input: {
     return "ACTIVE";
   }
 
-  if (!actor.emailVerifiedAt || actor.ageEligibilityStatus !== "ELIGIBLE") {
+  if (actor.ageEligibilityStatus !== "ELIGIBLE") {
     return "ONBOARDING_REQUIRED";
   }
 
@@ -204,6 +204,7 @@ export function computeEffectiveApplicationAccess(input: {
   if (
     hasTrustedKycForEnforcement(actor, kycCtx) &&
     (actor.adminReviewStatus === "PENDING" ||
+      actor.adminReviewStatus === "NEEDS_FURTHER_REVIEW" ||
       actor.adminReviewStatus === "NEEDS_MORE_INFO" ||
       actor.adminReviewStatus === "NOT_READY")
   ) {
@@ -239,10 +240,6 @@ export function resolveOnboardingNextAction(input: {
 
   if (effectiveAccess === "ACTIVE") {
     return "HOME_READY";
-  }
-
-  if (input.emailVerificationStatus === "UNVERIFIED") {
-    return "VERIFY_EMAIL";
   }
 
   if (actor.ageEligibilityStatus !== "ELIGIBLE") {
@@ -313,13 +310,11 @@ export function resolveOnboardingPhase(input: {
     return "ADMIN_REJECTED";
   }
 
-  if (input.emailVerificationStatus === "UNVERIFIED") {
-    return "AWAITING_EMAIL_VERIFICATION";
-  }
-
   if (
     hasTrustedKycForEnforcement(actor, kycCtx) &&
-    (actor.adminReviewStatus === "PENDING" || actor.adminReviewStatus === "NEEDS_MORE_INFO")
+    (actor.adminReviewStatus === "PENDING" ||
+      actor.adminReviewStatus === "NEEDS_FURTHER_REVIEW" ||
+      actor.adminReviewStatus === "NEEDS_MORE_INFO")
   ) {
     return "AWAITING_ADMIN_REVIEW";
   }

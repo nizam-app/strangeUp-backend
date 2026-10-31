@@ -5,10 +5,7 @@ type BlockLookup = {
 };
 
 /** Peer user IDs involved in a block with `viewerId` (either direction). */
-export async function loadBlockedPeerIds(
-  db: BlockLookup,
-  viewerId: string,
-): Promise<Set<string>> {
+export async function loadBlockedPeerIds(db: BlockLookup, viewerId: string): Promise<Set<string>> {
   const rows = await db.userBlock.findMany({
     where: {
       OR: [{ blockerId: viewerId }, { blockedId: viewerId }],

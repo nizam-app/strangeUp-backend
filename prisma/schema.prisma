@@ -36,6 +36,7 @@ enum IdentityVerificationStatus {
 enum StrangeUpAdminReviewStatus {
   NOT_READY
   PENDING
+  NEEDS_FURTHER_REVIEW
   APPROVED
   REJECTED
   NEEDS_MORE_INFO
@@ -44,11 +45,28 @@ enum StrangeUpAdminReviewStatus {
 enum PlatformStaffRole {
   IDENTITY_REVIEWER
   STORE_CATALOG_MANAGER
+  SUPER_ADMIN
 }
 
 enum VerificationProvider {
   MOCK
   VERIFF
+  MANUAL
+}
+
+enum ManualKycEvidenceKind {
+  ID_DOCUMENT
+  ID_DOCUMENT_BACK
+  SELFIE
+}
+
+enum ManualIdDocumentType {
+  PASSPORT
+  NATIONAL_ID
+  DRIVERS_LICENSE
+  STATE_ID
+  OTHER_ONE_SIDED
+  OTHER_TWO_SIDED
 }
 
 enum VerificationSessionStatus {
@@ -168,8 +186,16 @@ model User {
   communityContentReportsFiled   CommunityContentReport[]    @relation("CommunityContentReportReporter")
   communityContentReportsReviewed CommunityContentReport[]   @relation("CommunityContentReportReviewer")
   verificationSessions            VerificationSession[]
+  manualVerificationEvidence      ManualVerificationEvidence[]
   adminReviewDecisions            IdentityAdminReviewDecision[] @relation("IdentityAdminReviewSubject")
+  identityAdminReviewNotes        IdentityAdminReviewInternalNote[] @relation("IdentityAdminReviewNoteSubject")
+  identityAdminReviewNotesAuthored IdentityAdminReviewInternalNote[] @relation("IdentityAdminReviewNoteAuthor")
+  identityAdminReviewNotesRedacted IdentityAdminReviewInternalNote[] @relation("IdentityAdminReviewNoteRedactedBy")
+  identityAdminReviewIdempotencyReservations IdentityAdminReviewIdempotencyReservation[] @relation("IdentityAdminReviewIdempotencyReviewer")
   platformStaffGrants             PlatformStaffGrant[]
+  accountModerationDecisionsAsSubject AccountModerationDecision[] @relation("AccountModerationSubject")
+  accountModerationDecisionsAsActor   AccountModerationDecision[] @relation("AccountModerationActor")
+  activityModerationDecisionsAsActor  ActivityModerationDecision[] @relation("ActivityModerationActor")
   deviceTokens                    UserDeviceToken[]
   notificationPreference          UserNotificationPreference?
   pushOutboxEntries               PushNotificationOutbox[]
@@ -230,6 +256,56 @@ model PlatformStaffGrant {
 
   @@unique([userId, role])
   @@index([role, revokedAt])
+}
+
+enum AccountModerationAction {
+  SUSPEND
+  RESTORE
+}
+
+/// Super-admin account suspend/restore audit (Task 032C). Distinct from identity review decisions.
+model AccountModerationDecision {
+  id                     String                   @id @default(uuid()) @db.Uuid
+  userId                 String                   @db.Uuid
+  user                   User                     @relation("AccountModerationSubject", fields: [userId], references: [id], onDelete: Cascade)
+  actorUserId            String                   @db.Uuid
+  actor                  User                     @relation("AccountModerationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  action                 AccountModerationAction
+  reasonCode             String                   @db.VarChar(64)
+  reason                 String                   @db.VarChar(500)
+  previousAccountStatus  AccountStatus
+  resultingAccountStatus AccountStatus
+  idempotencyKey         String?                  @unique
+  createdAt              DateTime                 @default(now())
+
+  @@index([userId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+enum ActivityModerationAction {
+  CANCEL
+}
+
+/// Super-admin activity cancel audit (Task 033D). Distinct from host self-service cancel.
+model ActivityModerationDecision {
+  id                      String                    @id @default(uuid()) @db.Uuid
+  activityId              String                    @db.Uuid
+  activity                Activity                  @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  actorUserId             String                    @db.Uuid
+  actor                   User                      @relation("ActivityModerationActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  action                  ActivityModerationAction
+  reasonCode              String                    @db.VarChar(64)
+  reason                  String                    @db.VarChar(500)
+  previousActivityStatus  ActivityStatus
+  resultingActivityStatus ActivityStatus
+  confirmedClosedCount    Int
+  waitlistedClosedCount   Int
+  pendingClosedCount      Int
+  idempotencyKey          String?                   @unique
+  createdAt               DateTime                  @default(now())
+
+  @@index([activityId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 enum UserNotificationType {
@@ -508,6 +584,7 @@ model Activity {
   communityGroupLinks CommunityGroupActivity[]
   communityPosts      CommunityPost[]
   savedBy               SavedActivity[]
+  moderationDecisions ActivityModerationDecision[]
 
   @@index([status, audience, startsAt])
   @@index([categoryId, status, startsAt])
@@ -1215,9 +1292,46 @@ model IdentityAdminReviewDecision {
   reviewerUserId       String?                    @db.Uuid
   idempotencyKey       String?                    @unique
   createdAt            DateTime                   @default(now())
+  idempotencyReservation IdentityAdminReviewIdempotencyReservation?
 
   @@index([userId, createdAt])
   @@index([verificationSessionId, createdAt])
+}
+
+/// Atomic per-reviewer client idempotency claim for admin review mutations (Task 031F-1B.2).
+model IdentityAdminReviewIdempotencyReservation {
+  id                        String                      @id @default(uuid()) @db.Uuid
+  reviewerUserId            String                      @db.Uuid
+  reviewer                  User                        @relation("IdentityAdminReviewIdempotencyReviewer", fields: [reviewerUserId], references: [id], onDelete: Cascade)
+  clientKeyDigest           String                      @db.VarChar(64)
+  reviewId                  String                      @db.Uuid
+  action                    String                      @db.VarChar(40)
+  payloadFingerprint        String                      @db.VarChar(64)
+  scopedDecisionKey         String                      @unique
+  decisionId                String?                     @unique @db.Uuid
+  decision                  IdentityAdminReviewDecision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+  responseReviewId          String                      @db.Uuid
+  responseAdminReviewStatus StrangeUpAdminReviewStatus?
+  createdAt                 DateTime                    @default(now())
+
+  @@unique([reviewerUserId, clientKeyDigest])
+  @@index([reviewId, createdAt])
+}
+
+/// Staff-only internal notes on an identity review (Task 031F-1). Never exposed on public/Flutter APIs.
+model IdentityAdminReviewInternalNote {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  user             User      @relation("IdentityAdminReviewNoteSubject", fields: [userId], references: [id], onDelete: Cascade)
+  authorUserId     String    @db.Uuid
+  author           User      @relation("IdentityAdminReviewNoteAuthor", fields: [authorUserId], references: [id], onDelete: Restrict)
+  body             String    @db.VarChar(2000)
+  createdAt        DateTime  @default(now())
+  redactedAt       DateTime?
+  redactedByUserId String?   @db.Uuid
+  redactedBy       User?     @relation("IdentityAdminReviewNoteRedactedBy", fields: [redactedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
 }
 
 model VerificationSession {
@@ -1228,6 +1342,10 @@ model VerificationSession {
   providerSessionRef String
   providerAttemptRef String?
   status             VerificationSessionStatus @default(PENDING_USER)
+  /** Applicant-declared ID document class for MANUAL provider sessions only. */
+  manualIdDocumentType ManualIdDocumentType?
+  /** When document type requires explicit rear-side declaration (license/state/national ID). */
+  manualIdDocumentHasRearSide Boolean?
   authoritySequence  BigInt                    @default(0)
   sessionExpiresAt   DateTime
   completedAt        DateTime?
@@ -1238,10 +1356,28 @@ model VerificationSession {
   identityBindingForUsers User[] @relation("UserIdentityVerificationSession")
   adminReviewBindingForUsers User[] @relation("UserAdminReviewSession")
   adminReviewDecisions IdentityAdminReviewDecision[]
+  manualVerificationEvidence ManualVerificationEvidence[]
 
   @@unique([provider, providerSessionRef])
   @@index([userId, createdAt])
   @@index([userId, status])
+}
+
+model ManualVerificationEvidence {
+  id                    String                @id @default(uuid()) @db.Uuid
+  userId                String                @db.Uuid
+  user                  User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verificationSessionId String                @db.Uuid
+  verificationSession   VerificationSession   @relation(fields: [verificationSessionId], references: [id], onDelete: Cascade)
+  kind                  ManualKycEvidenceKind
+  cloudinaryPublicId    String
+  contentType           String
+  byteSize              Int
+  createdAt             DateTime              @default(now())
+  deletedAt             DateTime?
+
+  @@unique([verificationSessionId, kind])
+  @@index([userId, createdAt])
 }
 
 model VerificationDecision {

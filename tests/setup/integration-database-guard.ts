@@ -127,6 +127,58 @@ export function assertIntegrationDatabaseUrlPolicy(integrationUrl: string, devUr
   }
 }
 
+/**
+ * Fail-closed URL policy for the isolated Manual KYC test API (Task 031J-1).
+ * Runtime DATABASE_URL must target catalog strangeup_test only — never strangeup_dev.
+ */
+export function assertManualKycTestApiDatabaseUrl(databaseUrl: string): void {
+  const target = parseDatabaseTarget(databaseUrl);
+  if (!target.database) {
+    throw new Error("Manual KYC test API DATABASE_URL must include a database name");
+  }
+  if (target.database !== REQUIRED_INTEGRATION_DATABASE) {
+    throw new Error(
+      `Manual KYC test API refuses catalog "${target.database}" (required "${REQUIRED_INTEGRATION_DATABASE}")`,
+    );
+  }
+  if (FORBIDDEN_INTEGRATION_DATABASES.has(target.database)) {
+    throw new Error(`Manual KYC test API catalog "${target.database}" is not allowed`);
+  }
+  if (PRISMA_DEV_PORTS.has(target.port)) {
+    throw new Error(
+      `Manual KYC test API DATABASE_URL targets Prisma Dev port ${target.port}; use Neon or native PostgreSQL`,
+    );
+  }
+}
+
+/** Resolve DATABASE_URL for manual KYC test API from owner-approved sources (no logging). */
+export function resolveManualKycTestDatabaseUrl(env: NodeJS.ProcessEnv): string {
+  const source = env.MANUAL_KYC_TEST_DATABASE_SOURCE?.trim() || "integration";
+  if (source === "integration") {
+    const integration = env.INTEGRATION_DATABASE_URL?.trim();
+    if (!integration) {
+      throw new Error(
+        "MANUAL_KYC_TEST_DATABASE_SOURCE=integration requires INTEGRATION_DATABASE_URL in base .env",
+      );
+    }
+    assertManualKycTestApiDatabaseUrl(integration);
+    return integration;
+  }
+  if (source === "explicit") {
+    const explicit = env.DATABASE_URL?.trim();
+    if (!explicit) {
+      throw new Error(
+        "MANUAL_KYC_TEST_DATABASE_SOURCE=explicit requires DATABASE_URL in .env.manual-kyc-test.local",
+      );
+    }
+    assertManualKycTestApiDatabaseUrl(explicit);
+    return explicit;
+  }
+  throw new Error(
+    `Unknown MANUAL_KYC_TEST_DATABASE_SOURCE "${source}" (use "integration" or "explicit")`,
+  );
+}
+
 /** Verify live server identity matches URL (async). */
 export async function verifyIntegrationDatabaseIdentity(
   integrationUrl: string,

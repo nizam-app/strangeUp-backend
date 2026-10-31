@@ -5,7 +5,7 @@
 | ID | Priority | Status | Decision required | Blocks |
 |---|---|---|---|---|
 | D-01 | P0 | **APPROVED** | USA launch; adults-only 18+ | — (subsequent legal review may refine copy) |
-| D-02 | P0 | **APPROVED*** | Email, password, DOB, legal acceptance; email verification before full access | — |
+| D-02 | P0 | **APPROVED*** (amended 2026-10-30) | Email, password, DOB, legal acceptance at register; **email verification optional** for onboarding/Home (Task 031B.2 / ADR-005 amendment). `emailVerifiedAt` remains ownership metadata. | — |
 | D-02-AUTH | P0 | **APPROVED** | Email/password Phase 1; defer Google, Apple, phone OTP | — |
 | D-09 | P0 | **APPROVED*** | Separate email / age / KYC dimensions; no live KYC provider yet | — |
 | D-02-phone | P0 | OPEN | Mandatory phone collection and verification at signup? | signup UX, SMS vendor |

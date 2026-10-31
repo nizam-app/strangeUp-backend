@@ -24,7 +24,6 @@ export function buildDiscoverableActivitiesWhere(input: {
     startsAt: startsAtFilter,
     host: {
       accountStatus: "ACTIVE",
-      emailVerifiedAt: { not: null },
       ageEligibilityStatus: "ELIGIBLE",
       suspendedAt: null,
       deletedAt: null,

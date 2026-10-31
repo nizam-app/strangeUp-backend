@@ -11,7 +11,10 @@ import {
 } from "../../src/infrastructure/database/prisma.js";
 import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
 import { createIntegrationUser } from "../helpers/integration-user.js";
-import { seedMainAppActivatedUser, seedProviderApprovedApplicant } from "../helpers/kyc-applicant.js";
+import {
+  seedMainAppActivatedUser,
+  seedProviderApprovedApplicant,
+} from "../helpers/kyc-applicant.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";

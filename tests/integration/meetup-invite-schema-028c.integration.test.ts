@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Prisma } from "../../generated/prisma/client.js";
-import { createPrismaClient, type DatabaseClient } from "../../src/infrastructure/database/prisma.js";
+import {
+  createPrismaClient,
+  type DatabaseClient,
+} from "../../src/infrastructure/database/prisma.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
 

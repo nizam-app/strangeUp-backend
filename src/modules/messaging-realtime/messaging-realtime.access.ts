@@ -4,10 +4,7 @@ import { isBlockedEitherDirection } from "../blocks/block-access.js";
 import { assertGroupAccess, loadMembership, requireActiveMember } from "../groups/group-access.js";
 import { toPolicyActor } from "../policy/account-policy.js";
 import { assertFullAccess, socialNotFound } from "../social/social-access.js";
-import {
-  canAccessAcceptedConversation,
-  otherParticipantId,
-} from "../social/social-policy.js";
+import { canAccessAcceptedConversation, otherParticipantId } from "../social/social-policy.js";
 
 export async function assertCanSubscribeDirectConversation(
   db: DatabaseClient,

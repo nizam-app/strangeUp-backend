@@ -3,6 +3,7 @@ import type { AuthenticatedRequest } from "../../common/middleware/authenticate.
 import { AppError } from "../../common/errors/app-error.js";
 import type { AppEnv } from "../../config/env.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
 import { SavedActivityService } from "./saved-activity.service.js";
 import {
   savedActivityIdParamSchema,
@@ -17,10 +18,7 @@ function requireUser(req: AuthenticatedRequest) {
 }
 
 export function createSavedActivitiesController(deps: { db: DatabaseClient; env: AppEnv }) {
-  const service = new SavedActivityService(deps.db, {
-    isProduction: deps.env.isProduction,
-    kycProviderEnabled: deps.env.KYC_PROVIDER_ENABLED,
-  });
+  const service = new SavedActivityService(deps.db, buildKycEnforcementContext(deps.env));
 
   return {
     listSaved: async (req: AuthenticatedRequest, res: Response): Promise<void> => {

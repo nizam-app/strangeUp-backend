@@ -8,10 +8,7 @@ import {
   disconnectPrisma,
   type DatabaseClient,
 } from "../../src/infrastructure/database/prisma.js";
-import {
-  createCapturingEmailSender,
-  extractVerificationTokenFromText,
-} from "../helpers/capturing-email-sender.js";
+import { createCapturingEmailSender } from "../helpers/capturing-email-sender.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
@@ -88,7 +85,7 @@ describeOnboarding("integration: onboarding status (Task 022A)", () => {
     expect(login.body.data.user.fullAccess).toBe(false);
   });
 
-  it("onboarding status guides VERIFY_EMAIL then IDV after email confirm", async () => {
+  it("onboarding status guides IDV immediately after register without email confirm", async () => {
     const email = `onb-flow-${Date.now()}@example.com`;
     await request(app).post("/v1/auth/register").send({
       firstName: "Flow",
@@ -98,34 +95,28 @@ describeOnboarding("integration: onboarding status (Task 022A)", () => {
       dateOfBirth: "1995-06-15",
       consents: defaultConsents,
     });
-    const login1 = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-    const token1 = login1.body.data.accessToken as string;
+    const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
+    const token = login.body.data.accessToken as string;
 
     const pending = await request(app)
       .get("/v1/me/onboarding/status")
-      .set("Authorization", `Bearer ${token1}`);
+      .set("Authorization", `Bearer ${token}`);
     expect(pending.status).toBe(200);
     expect(pending.body.data.homeAccessAllowed).toBe(false);
-    expect(pending.body.data.nextAction).toBe("VERIFY_EMAIL");
-
-    const verifyToken = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-    await request(app).post("/v1/auth/email-verification/confirm").send({ token: verifyToken });
-
-    const login2 = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
-    const token2 = login2.body.data.accessToken as string;
-    expect(login2.body.data.user.fullAccess).toBe(false);
+    expect(pending.body.data.emailVerificationStatus).toBe("UNVERIFIED");
+    expect(pending.body.data.nextAction).toBe("START_IDENTITY_VERIFICATION");
+    expect(pending.body.data.limitations).not.toContain("EMAIL_VERIFICATION_REQUIRED");
 
     const ready = await request(app)
       .get("/v1/me/onboarding/status")
-      .set("Authorization", `Bearer ${token2}`);
+      .set("Authorization", `Bearer ${token}`);
     expect(ready.status).toBe(200);
     expect(ready.body.data.canStartVerification).toBe(true);
-    expect(ready.body.data.nextAction).toBe("START_IDENTITY_VERIFICATION");
     expect(ready.body.data.homeAccessAllowed).toBe(false);
 
     const start = await request(app)
       .post("/v1/me/verification/sessions")
-      .set("Authorization", `Bearer ${token2}`)
+      .set("Authorization", `Bearer ${token}`)
       .send({});
     expect(start.status).toBe(201);
   });
@@ -140,14 +131,10 @@ describeOnboarding("integration: onboarding status (Task 022A)", () => {
       dateOfBirth: "1995-06-15",
       consents: defaultConsents,
     });
-    const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
-    await request(app).post("/v1/auth/email-verification/confirm").send({ token });
     const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
     const accessToken = login.body.data.accessToken as string;
 
-    const home = await request(app)
-      .get("/v1/home")
-      .set("Authorization", `Bearer ${accessToken}`);
+    const home = await request(app).get("/v1/home").set("Authorization", `Bearer ${accessToken}`);
     expect(home.status).toBe(403);
   });
 });

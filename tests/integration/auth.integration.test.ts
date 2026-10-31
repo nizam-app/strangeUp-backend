@@ -105,7 +105,8 @@ describeAuth("integration: auth flows", () => {
     const email = `user-${Date.now()}@example.com`;
     const res = await request(app).post("/v1/auth/register").send(registerPayload(email));
     expect(res.status).toBe(201);
-    expect(res.body.data.emailVerificationRequired).toBe(true);
+    expect(res.body.data.emailVerificationRequired).toBe(false);
+    expect(res.body.data.accountStatus).toBe("ACTIVE");
     expect(res.body.data.accessToken).toBeUndefined();
     expect(res.body.data.refreshToken).toBeUndefined();
 
@@ -145,9 +146,20 @@ describeAuth("integration: auth flows", () => {
     expect(afterFamilyRevoke.status).toBe(401);
   });
 
-  it("I-P05 email verification confirm activates eligible account", async () => {
+  it("I-P05 optional email verification via request and confirm", async () => {
     const email = `verify-${Date.now()}@example.com`;
+    emailSender.clear();
     await request(app).post("/v1/auth/register").send(registerPayload(email));
+    expect(emailSender.lastMessage).toBeNull();
+
+    const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
+    expect(login.status).toBe(200);
+    const accessToken = login.body.data.accessToken as string;
+
+    await request(app)
+      .post("/v1/auth/email-verification/request")
+      .set("Authorization", `Bearer ${accessToken}`);
+
     const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
     expect(token).toBeTruthy();
 
@@ -260,7 +272,12 @@ describeAuth("integration: auth flows", () => {
 
     const email = `verify2-${Date.now()}@example.com`;
     await request(app).post("/v1/auth/register").send(registerPayload(email));
+    const login = await request(app).post("/v1/auth/login").send({ email, password: "ValidPass1" });
+    await request(app)
+      .post("/v1/auth/email-verification/request")
+      .set("Authorization", `Bearer ${login.body.data.accessToken as string}`);
     const token = extractVerificationTokenFromText(emailSender.lastMessage?.text ?? "");
+    expect(token).toBeTruthy();
     const first = await request(app).post("/v1/auth/email-verification/confirm").send({ token });
     expect(first.status).toBe(200);
     const second = await request(app).post("/v1/auth/email-verification/confirm").send({ token });

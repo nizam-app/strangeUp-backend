@@ -34,7 +34,7 @@ describe("account policy stubs", () => {
     expect(canChangePassword(pending, "other-user")).toBe(false);
   });
 
-  it("requires verification for profile edit", () => {
+  it("requires active eligible account for profile edit (email verification not required)", () => {
     expect(
       canEditProfile(
         baseEligibleActor({
@@ -44,6 +44,9 @@ describe("account policy stubs", () => {
         baseEligibleActor().userId,
       ),
     ).toBe(false);
+    expect(
+      canEditProfile(baseEligibleActor({ emailVerifiedAt: null }), baseEligibleActor().userId),
+    ).toBe(true);
     expect(canEditProfile(baseEligibleActor(), baseEligibleActor().userId)).toBe(true);
   });
 

@@ -34,7 +34,10 @@ export function createStoreController(deps: { db: DatabaseClient; env: AppEnv })
       res.status(200).json({ data, meta: { requestId: req.requestId } });
     },
 
-    getMerchandisePricingPolicy: async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    getMerchandisePricingPolicy: async (
+      req: AuthenticatedRequest,
+      res: Response,
+    ): Promise<void> => {
       const data = await Promise.resolve(catalog.getMerchandisePricingPolicy(requireUser(req)));
       res.status(200).json({ data, meta: { requestId: req.requestId } });
     },

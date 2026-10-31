@@ -11,12 +11,10 @@ describe("activity-join-policy", () => {
   });
 
   it("HOST_APPROVAL waitlist requires hostApprovedAt for FIFO", () => {
-    expect(isWaitlistFifoEligible({ joinMode: "HOST_APPROVAL", hostApprovedAt: null })).toBe(
-      false,
+    expect(isWaitlistFifoEligible({ joinMode: "HOST_APPROVAL", hostApprovedAt: null })).toBe(false);
+    expect(isWaitlistFifoEligible({ joinMode: "HOST_APPROVAL", hostApprovedAt: new Date() })).toBe(
+      true,
     );
-    expect(
-      isWaitlistFifoEligible({ joinMode: "HOST_APPROVAL", hostApprovedAt: new Date() }),
-    ).toBe(true);
   });
 
   it("blocks reapplication after decline (unresolved policy)", () => {

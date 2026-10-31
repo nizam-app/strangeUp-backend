@@ -19,7 +19,12 @@ import {
   extractVerificationTokenFromText,
 } from "../helpers/capturing-email-sender.js";
 import { clearRateLimits } from "../../src/modules/auth/rate-limit.js";
-import { grantIdentityReviewer, mockApproveWebhookBody, signMockWebhook, KYC_TEST_WEBHOOK_SECRET } from "../helpers/kyc-applicant.js";
+import {
+  grantIdentityReviewer,
+  mockApproveWebhookBody,
+  signMockWebhook,
+  KYC_TEST_WEBHOOK_SECRET,
+} from "../helpers/kyc-applicant.js";
 import { DEFAULT_INTEGRATION_CONSENTS } from "../helpers/integration-user.js";
 
 const runIntegration = process.env.RUN_INTEGRATION === "1";
@@ -81,14 +86,16 @@ describe022D("integration: Task 022D auth-flow E2E", () => {
     email: string;
   }> {
     const email = `${prefix}-${Date.now()}@example.com`;
-    const reg = await request(app).post("/v1/auth/register").send({
-      firstName: "Flow",
-      lastName: "User",
-      email,
-      password: "ValidPass1",
-      dateOfBirth: "1995-06-15",
-      consents: [...DEFAULT_INTEGRATION_CONSENTS],
-    });
+    const reg = await request(app)
+      .post("/v1/auth/register")
+      .send({
+        firstName: "Flow",
+        lastName: "User",
+        email,
+        password: "ValidPass1",
+        dateOfBirth: "1995-06-15",
+        consents: [...DEFAULT_INTEGRATION_CONSENTS],
+      });
     expect(reg.status).toBe(201);
     expect(reg.body.data.accessToken).toBeUndefined();
 
@@ -327,9 +334,7 @@ describe022D("integration: Task 022D auth-flow E2E", () => {
     expect(refreshed.status).toBe(200);
     const newAccess = refreshed.body.data.accessToken as string;
 
-    const home = await request(app)
-      .get("/v1/home")
-      .set("Authorization", `Bearer ${newAccess}`);
+    const home = await request(app).get("/v1/home").set("Authorization", `Bearer ${newAccess}`);
     expect(home.status).toBe(403);
     expect(home.body.error.code).toBe("ONBOARDING_REQUIRED");
   });

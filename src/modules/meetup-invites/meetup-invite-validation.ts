@@ -26,12 +26,14 @@ export type MeetupInviteValidationIssue =
   | "venue_address_too_long"
   | "venue_place_notes_too_long";
 
-export type MeetupInviteCreateFieldValidation = {
-  ok: true;
-} | {
-  ok: false;
-  issues: MeetupInviteValidationIssue[];
-};
+export type MeetupInviteCreateFieldValidation =
+  | {
+      ok: true;
+    }
+  | {
+      ok: false;
+      issues: MeetupInviteValidationIssue[];
+    };
 
 export function isValidIanaTimeZone(timeZone: string): boolean {
   if (!timeZone.trim()) {

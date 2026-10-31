@@ -7,6 +7,7 @@ generated/
 .env
 .env.*
 !.env.example
+!.env.manual-kyc-test.example
 
 # Logs and OS
 *.log

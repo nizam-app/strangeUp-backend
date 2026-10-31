@@ -132,6 +132,18 @@ describe("production environment safeguards (Task 018)", () => {
     ).toThrow(/RATE_LIMIT_STORE=memory is not allowed/);
   });
 
+  it("rejects super admin bootstrap env in production", () => {
+    expect(() =>
+      assertProductionEnvironmentSafe(
+        loadEnv({
+          ...PRODUCTION_BASE,
+          PLATFORM_SUPER_ADMIN_USER_IDS: "11111111-1111-1111-1111-111111111111",
+        }),
+        PRODUCTION_BASE.JWT_ACCESS_SECRET,
+      ),
+    ).toThrow(/PLATFORM_SUPER_ADMIN_USER_IDS/);
+  });
+
   it("assertProductionEnvironmentSafe is a no-op outside production", () => {
     const env = buildTestEnv({ isProduction: false, NODE_ENV: "test" });
     expect(() =>

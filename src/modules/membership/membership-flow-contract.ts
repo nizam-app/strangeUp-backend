@@ -41,8 +41,7 @@ export function buildMembershipFlowContract(): MembershipFlowContractDto {
     },
     billingIntervalSelector: {
       status: "DEFERRED",
-      note:
-        "Figma Screen 18 monthly/yearly toggle targets Club offers only. No owner-approved SKUs or prices.",
+      note: "Figma Screen 18 monthly/yearly toggle targets Club offers only. No owner-approved SKUs or prices.",
       intervals: [
         {
           interval: "MONTHLY",
@@ -73,8 +72,10 @@ export function buildMembershipFlowContract(): MembershipFlowContractDto {
       task022KycAdminGate: "INDEPENDENT",
     },
     capabilityStatusLegend: {
-      AVAILABLE: "Implemented product surface; may still require Task 022 KYC/admin gates per feature.",
-      NOT_CONFIGURED: "Product/policy or commercial terms not approved (D-08); do not sell or enforce.",
+      AVAILABLE:
+        "Implemented product surface; may still require Task 022 KYC/admin gates per feature.",
+      NOT_CONFIGURED:
+        "Product/policy or commercial terms not approved (D-08); do not sell or enforce.",
       DEFERRED: "Explicitly deferred engineering (billing, checkout, restore, trials).",
       NOT_IMPLEMENTED: "Approved-in-principle perk without backend enforcement foundation.",
     },

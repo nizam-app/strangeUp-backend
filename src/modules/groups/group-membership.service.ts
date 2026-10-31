@@ -166,9 +166,8 @@ export class GroupMembershipService {
         },
       });
     });
-    const { onUserLeftGroup } = await import(
-      "../messaging-realtime/messaging-realtime.lifecycle.js"
-    );
+    const { onUserLeftGroup } =
+      await import("../messaging-realtime/messaging-realtime.lifecycle.js");
     void onUserLeftGroup(viewer.id, groupId).catch(() => undefined);
     return { left: true };
   }
@@ -453,9 +452,8 @@ export class GroupMembershipService {
       removedUserId = target.userId;
     });
     if (removedUserId) {
-      const { onUserLeftGroup } = await import(
-        "../messaging-realtime/messaging-realtime.lifecycle.js"
-      );
+      const { onUserLeftGroup } =
+        await import("../messaging-realtime/messaging-realtime.lifecycle.js");
       void onUserLeftGroup(removedUserId, groupId).catch(() => undefined);
     }
     return { removed: true };

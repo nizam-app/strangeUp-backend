@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isSavedActivityVisibleToViewer } from "../src/modules/saved-activities/saved-activity-visibility.js";
 
-const kycDev = { isProduction: false, kycProviderEnabled: false };
+const kycDev = { isProduction: false, kycProviderEnabled: false, kycManualReviewEnabled: false };
 
 const activeHost = {
   id: "host-1",

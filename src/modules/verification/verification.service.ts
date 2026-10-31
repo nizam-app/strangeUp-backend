@@ -14,12 +14,21 @@ import {
   resolveVerificationRuntimeConfig,
   type VerificationRuntimeConfig,
 } from "./verification-config.js";
+import { resolveKycIdentityAuthority } from "./kyc-identity-authority.js";
 import { canStartVerification, isTerminalUserKyc } from "./verification-policy.js";
 import { toPolicyActor } from "../policy/account-policy.js";
 import type { MockWebhookBody } from "./verification.validation.js";
 import { mapProviderDecisionToUserStatus } from "./kyc-trust.js";
 import { verifyHmacSha256Hex } from "./webhook-signature.js";
-import { mockWebhookBodySchema } from "./verification.validation.js";
+import {
+  mockWebhookBodySchema,
+  veriffDecisionWebhookBodySchema,
+} from "./verification.validation.js";
+import {
+  buildVeriffProviderEventId,
+  mapVeriffDecisionToSessionStatus,
+  trustedUserDecisionBlockedReason,
+} from "./veriff-decision.js";
 
 const ACTIVE_SESSION_STATUSES: VerificationSessionStatus[] = [
   "PENDING_USER",
@@ -69,7 +78,7 @@ export class VerificationService {
 
   constructor(
     private readonly db: DatabaseClient,
-    env: AppEnv,
+    private readonly env: AppEnv,
   ) {
     this.config = resolveVerificationRuntimeConfig(env);
   }
@@ -93,10 +102,18 @@ export class VerificationService {
       },
     });
 
+    const authority = resolveKycIdentityAuthority(this.env);
+
     return {
       providerRuntimeStatus: this.config.runtimeStatus,
       providerEnabled: this.config.providerEnabled,
+      identityAuthorityPath: authority.activePath,
+      canStartManualVerification:
+        authority.manualReviewAllowed &&
+        canStartVerification(toPolicyActor(user), user) &&
+        !isTerminalUserKyc(user),
       canStartVerification:
+        authority.providerSessionStartAllowed &&
         canStartVerificationSession(this.config) &&
         canStartVerification(toPolicyActor(user), user) &&
         !isTerminalUserKyc(user),
@@ -119,6 +136,14 @@ export class VerificationService {
   }
 
   async startSession(user: User, input: { locale?: string }) {
+    const authority = resolveKycIdentityAuthority(this.env);
+    if (authority.activePath === "manual") {
+      throw new AppError(
+        "CONFLICT",
+        "Provider verification is disabled; use manual identity verification",
+        409,
+      );
+    }
     if (!canStartVerificationSession(this.config)) {
       throw new AppError(
         "SERVICE_UNAVAILABLE",
@@ -129,9 +154,7 @@ export class VerificationService {
       );
     }
 
-    if (
-      !canStartVerification(toPolicyActor(user), user)
-    ) {
+    if (!canStartVerification(toPolicyActor(user), user)) {
       throw new AppError("AUTH_FORBIDDEN", "Not eligible to start identity verification", 403);
     }
 
@@ -166,11 +189,15 @@ export class VerificationService {
       providerSessionRef = mock.providerSessionRef;
       sdkToken = mock.sdkToken;
       redirectUrl = mock.redirectUrl;
-    } else {
-      await createVeriffProviderSession(this.config, {
+    } else if (provider === "VERIFF") {
+      const veriff = await createVeriffProviderSession(this.config, {
         userId: user.id,
         locale: input.locale,
       });
+      providerSessionRef = veriff.providerSessionRef;
+      sdkToken = veriff.sdkToken;
+      redirectUrl = veriff.redirectUrl;
+    } else {
       throw new AppError("SERVICE_UNAVAILABLE", "Verification provider not configured", 503);
     }
 
@@ -295,12 +322,65 @@ export class VerificationService {
     });
   }
 
+  async processVeriffWebhook(
+    rawBody: Buffer,
+    signature: string | undefined,
+    clientHeader: string | undefined,
+  ) {
+    if (this.config.runtimeStatus !== "VERIFF_READY") {
+      throw new AppError(
+        "SERVICE_UNAVAILABLE",
+        "Veriff webhook processing requires owner-approved activation",
+        503,
+      );
+    }
+
+    const secret = this.config.veriffSharedSecret;
+    const apiKey = this.config.veriffApiKey;
+    if (!secret || !apiKey) {
+      throw new AppError("SERVICE_UNAVAILABLE", "Veriff credentials are not configured", 503);
+    }
+
+    if (!clientHeader?.trim() || clientHeader.trim() !== apiKey.trim()) {
+      throw new AppError("AUTH_FORBIDDEN", "Invalid webhook client identification", 403);
+    }
+
+    if (!verifyHmacSha256Hex(secret, rawBody, signature)) {
+      throw new AppError("AUTH_FORBIDDEN", "Invalid webhook signature", 403);
+    }
+
+    let parsed;
+    try {
+      parsed = veriffDecisionWebhookBodySchema.parse(JSON.parse(rawBody.toString("utf8")));
+    } catch {
+      throw new AppError("VALIDATION_ERROR", "Invalid webhook payload", 400);
+    }
+
+    const providerEventId = buildVeriffProviderEventId({
+      providerSessionRef: parsed.verification.id,
+      decisionStatus: parsed.verification.status,
+      decisionTime: parsed.verification.decisionTime,
+    });
+
+    return this.applyProviderDecision({
+      provider: "VERIFF",
+      providerEventId,
+      providerSessionRef: parsed.verification.id,
+      decisionStatus: mapVeriffDecisionToSessionStatus(parsed.verification.status),
+      decisionAt: parsed.verification.decisionTime
+        ? new Date(parsed.verification.decisionTime)
+        : new Date(),
+      endUserId: parsed.verification.endUserId ?? undefined,
+    });
+  }
+
   private async applyProviderDecision(input: {
     provider: VerificationProvider;
     providerEventId: string;
     providerSessionRef: string;
     decisionStatus: VerificationSessionStatus;
     decisionAt: Date;
+    endUserId?: string;
   }) {
     return this.db.$transaction(async (tx) => {
       const existingReceipt = await tx.verificationWebhookReceipt.findUnique({
@@ -335,6 +415,18 @@ export class VerificationService {
           },
         });
         throw new AppError("NOT_FOUND", "Verification session not found for webhook", 404);
+      }
+
+      if (input.endUserId && input.endUserId !== session.userId) {
+        await tx.verificationWebhookReceipt.create({
+          data: {
+            id: randomUUID(),
+            provider: input.provider,
+            providerEventId: input.providerEventId,
+            sessionId: session.id,
+          },
+        });
+        throw new AppError("AUTH_FORBIDDEN", "Verification session binding mismatch", 403);
       }
 
       const nextSequence = session.authoritySequence + BigInt(1);
@@ -394,14 +486,36 @@ export class VerificationService {
       });
 
       const mappedUserStatus = mapProviderDecisionToUserStatus(input.decisionStatus);
-      if (mappedUserStatus) {
+      const newerSession = await tx.verificationSession.findFirst({
+        where: {
+          userId: session.userId,
+          createdAt: { gt: session.createdAt },
+        },
+        select: { id: true },
+      });
+      const trustBlockReason = trustedUserDecisionBlockedReason({
+        decisionStatus: input.decisionStatus,
+        sessionId: session.id,
+        sessionCreatedAt: session.createdAt,
+        userIdentityRevokedAt: session.user.identityVerificationRevokedAt,
+        userIdentityVerificationSessionId: session.user.identityVerificationSessionId,
+        hasNewerVerificationSession: Boolean(newerSession),
+      });
+
+      if (mappedUserStatus && !trustBlockReason) {
         const userUpdate: {
           identityVerificationStatus: typeof mappedUserStatus;
           identityVerificationApprovedAt?: Date | null;
           identityVerificationValidUntil?: Date | null;
           identityVerificationRevokedAt?: Date | null;
           identityVerificationSessionId?: string | null;
-          adminReviewStatus?: "NOT_READY" | "PENDING" | "APPROVED" | "REJECTED" | "NEEDS_MORE_INFO";
+          adminReviewStatus?:
+            | "NOT_READY"
+            | "PENDING"
+            | "NEEDS_FURTHER_REVIEW"
+            | "APPROVED"
+            | "REJECTED"
+            | "NEEDS_MORE_INFO";
           adminReviewVerificationSessionId?: string | null;
           adminReviewDecidedAt?: Date | null;
         } = {
@@ -412,6 +526,7 @@ export class VerificationService {
           userUpdate.identityVerificationApprovedAt = input.decisionAt;
           userUpdate.identityVerificationRevokedAt = null;
           userUpdate.identityVerificationSessionId = session.id;
+          // Re-queues admin review for the new trusted session (clears NEEDS_FURTHER_REVIEW hold).
           userUpdate.adminReviewStatus = "PENDING";
           userUpdate.adminReviewVerificationSessionId = session.id;
           userUpdate.adminReviewDecidedAt = null;
@@ -442,7 +557,11 @@ export class VerificationService {
         });
       }
 
-      return { duplicate: false as const, ignored: false as const, sessionId: session.id };
+      return {
+        duplicate: false as const,
+        ignored: Boolean(trustBlockReason),
+        sessionId: session.id,
+      };
     });
   }
 }

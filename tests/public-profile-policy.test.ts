@@ -112,12 +112,7 @@ describe("public profile policy (D-03/D-04)", () => {
       ),
     ).toBe(false);
     expect(
-      canViewPublicProfile(
-        activatedViewer,
-        activatedTarget,
-        "VERIFIED_USERS_ONLY",
-        false,
-      ),
+      canViewPublicProfile(activatedViewer, activatedTarget, "VERIFIED_USERS_ONLY", false),
     ).toBe(true);
   });
 

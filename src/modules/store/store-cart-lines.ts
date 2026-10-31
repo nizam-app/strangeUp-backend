@@ -1,9 +1,7 @@
 export type CartLineAvailability = "AVAILABLE" | "INSUFFICIENT_STOCK" | "UNAVAILABLE";
 
 export type CartLineAvailabilityReason =
-  | "PRODUCT_NOT_PUBLISHED"
-  | "VARIANT_INACTIVE"
-  | "INSUFFICIENT_STOCK";
+  "PRODUCT_NOT_PUBLISHED" | "VARIANT_INACTIVE" | "INSUFFICIENT_STOCK";
 
 export type CartLineInput = {
   quantity: number;

@@ -2,10 +2,7 @@ import type { User } from "../../../generated/prisma/client.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
-import {
-  hasHomeAccess,
-  toActivationPolicyActor,
-} from "../policy/effective-access-policy.js";
+import { hasHomeAccess, toActivationPolicyActor } from "../policy/effective-access-policy.js";
 import type { KycEnforcementContext } from "../verification/kyc-trust.js";
 import { loadVisibleSocialTarget } from "../social/social-access.js";
 import { MEETUP_INVITE_NOT_FOUND_MESSAGE } from "./meetup-invite.constants.js";
@@ -79,11 +76,7 @@ export async function assertMeetupInviteParticipantsEligible(
   }
   for (const user of users) {
     if (!hasHomeAccess(toActivationPolicyActor(user), kyc)) {
-      throw new AppError(
-        "AUTH_FORBIDDEN",
-        MEETUP_INVITE_PARTICIPANTS_INELIGIBLE_MESSAGE,
-        403,
-      );
+      throw new AppError("AUTH_FORBIDDEN", MEETUP_INVITE_PARTICIPANTS_INELIGIBLE_MESSAGE, 403);
     }
   }
 }

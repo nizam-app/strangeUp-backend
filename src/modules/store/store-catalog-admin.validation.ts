@@ -65,7 +65,11 @@ export const storeCatalogAdminCreateVariantSchema = z.object({
   priceCents: z.number().int().min(0).max(100_000_000),
   compareAtPriceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
   currency: currencySchema.default("USD"),
-  stockQuantity: z.number().int().min(0).max(STORE_CART_MAX_QUANTITY * 1000),
+  stockQuantity: z
+    .number()
+    .int()
+    .min(0)
+    .max(STORE_CART_MAX_QUANTITY * 1000),
   isActive: z.boolean().default(true),
 });
 
@@ -76,14 +80,23 @@ export const storeCatalogAdminPatchVariantSchema = z
     priceCents: z.number().int().min(0).max(100_000_000).optional(),
     compareAtPriceCents: z.number().int().min(0).max(100_000_000).nullable().optional(),
     currency: currencySchema.optional(),
-    stockQuantity: z.number().int().min(0).max(STORE_CART_MAX_QUANTITY * 1000).optional(),
+    stockQuantity: z
+      .number()
+      .int()
+      .min(0)
+      .max(STORE_CART_MAX_QUANTITY * 1000)
+      .optional(),
     isActive: z.boolean().optional(),
     expectedUpdatedAt: z.string().datetime().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: "At least one field required" });
 
 export const storeCatalogAdminStockPatchSchema = z.object({
-  stockQuantity: z.number().int().min(0).max(STORE_CART_MAX_QUANTITY * 1000),
+  stockQuantity: z
+    .number()
+    .int()
+    .min(0)
+    .max(STORE_CART_MAX_QUANTITY * 1000),
   expectedUpdatedAt: z.string().datetime(),
 });
 

@@ -2,7 +2,7 @@
 
 **Evidence:** `cursor_tasks/StrangeUp_Task_022_Staged_Auth_Repair_Execution.md` screen inventory (11 PDFs from `Strange up(auth).zip`). Local `design-reference/` PDF bytes were **not** present in this workspace at audit time; classifications are grounded in the staged plan + **implemented backend routes/tests**, not re-opened PDF pixels.
 
-**Owner flow (authoritative):** Splash → Onboarding → Login/Signup → Email verification → Government ID (Veriff SDK) → Selfie (Veriff SDK) → Provider decision → StrangeUp admin review → Home/main app.
+**Owner flow (authoritative, amended 2026-10-30 Task 031B.2):** Splash → Onboarding → Login/Signup → Government ID (Veriff SDK) → Selfie (Veriff SDK) → Provider decision → StrangeUp admin review → Home/main app. Email verification is **optional** (not an onboarding gate).
 
 **Legend:** MATCHED | PARTIAL | MISSING | DEFERRED | FLUTTER-ONLY
 
@@ -13,7 +13,7 @@
 | Journey step | Backend | Status | Notes |
 |---|---|---|---|
 | Create account + DOB + consent | `POST /v1/auth/register` | **MATCHED** | No tokens on register; consents persisted |
-| Email verification | `POST /v1/auth/email-verification/confirm` | **MATCHED** | Production email delivery **DEFERRED** (DEV_ONLY stub) |
+| Email verification (optional) | `POST /v1/auth/email-verification/*` | **MATCHED** | Not required for IDV/Home; production email **DEFERRED** (DEV_ONLY stub) |
 | Login (pending) | `POST /v1/auth/login` → `user.fullAccess: false` | **MATCHED** | Flutter must call `GET /v1/me/onboarding/status` |
 | Start IDV | `POST /v1/me/verification/sessions` | **MATCHED** | Mock/Veriff adapter; production Veriff **DEFERRED** (owner block) |
 | Government ID capture | — | **FLUTTER-ONLY** | Veriff SDK; no backend ID image upload |

@@ -57,7 +57,9 @@ describe024d("integration: store fulfillment & order readiness (Task 024D)", () 
     expect(res.body.data.fulfillment.domain).toBe("PHYSICAL_MERCHANDISE_ORDER");
     expect(res.body.data.fulfillment.checkout.status).toBe("UNAVAILABLE");
     expect(
-      res.body.data.fulfillment.methods.some((m: { method: string }) => m.method === "ACTIVITY_PICKUP"),
+      res.body.data.fulfillment.methods.some(
+        (m: { method: string }) => m.method === "ACTIVITY_PICKUP",
+      ),
     ).toBe(true);
   });
 

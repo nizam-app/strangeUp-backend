@@ -1,10 +1,7 @@
 import type { Prisma, UserNotificationType } from "../../../generated/prisma/client.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
-import {
-  hasHomeAccess,
-  toActivationPolicyActor,
-} from "../policy/effective-access-policy.js";
+import { hasHomeAccess, toActivationPolicyActor } from "../policy/effective-access-policy.js";
 import type { KycEnforcementContext } from "../verification/kyc-trust.js";
 import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
 import { meetupInviteParticipantActivationSelect } from "./meetup-invite-access.js";
@@ -86,9 +83,7 @@ async function emitMeetupNotification(
     return;
   }
   const copy =
-    MEETUP_INVITE_NOTIFICATION_COPY[
-      input.type as keyof typeof MEETUP_INVITE_NOTIFICATION_COPY
-    ];
+    MEETUP_INVITE_NOTIFICATION_COPY[input.type as keyof typeof MEETUP_INVITE_NOTIFICATION_COPY];
   await notifications.emitInTransaction(tx, {
     recipientId: input.recipientId,
     type: input.type,

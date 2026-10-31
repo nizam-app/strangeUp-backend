@@ -1,5 +1,8 @@
 import type { PersonalMeetupInviteStatus } from "../../../generated/prisma/client.js";
-import type { MeetupInviteMutationAction, MeetupInviteParticipantRole } from "./meetup-invite.types.js";
+import type {
+  MeetupInviteMutationAction,
+  MeetupInviteParticipantRole,
+} from "./meetup-invite.types.js";
 import {
   decideMeetupInviteTransition,
   resolveEffectiveMeetupInviteStatus,
@@ -36,7 +39,9 @@ export function canSenderCreateMeetupInviteWhenBlocked(blockedEitherDirection: b
  * One active PENDING invite per ordered (senderId, recipientId) pair — DB partial unique index.
  * Application may create a new row once prior invite is terminal.
  */
-export function canCreateMeetupInviteGivenExistingPending(hasPendingForOrderedPair: boolean): boolean {
+export function canCreateMeetupInviteGivenExistingPending(
+  hasPendingForOrderedPair: boolean,
+): boolean {
   return !hasPendingForOrderedPair;
 }
 

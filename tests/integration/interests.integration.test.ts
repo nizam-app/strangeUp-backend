@@ -194,7 +194,11 @@ describeInterests("integration: profile interests (Task 007)", () => {
   });
 
   it("T007-P03 pending user can read catalog; main-app /me/interests is denied", async () => {
-    const { accessToken } = await createEmailVerifiedIntegrationUser(app, emailSender, "pending-int");
+    const { accessToken } = await createEmailVerifiedIntegrationUser(
+      app,
+      emailSender,
+      "pending-int",
+    );
 
     const catalog = await request(app)
       .get("/v1/interests")

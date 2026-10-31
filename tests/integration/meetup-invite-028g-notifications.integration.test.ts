@@ -108,9 +108,9 @@ describeMeetup("integration: meetup invite notifications 028G", () => {
       .get("/v1/me/notifications")
       .set("Authorization", `Bearer ${recipient.accessToken}`);
     expect(list.status).toBe(200);
-    expect(list.body.data.notifications.some((n: { sourceId: string }) => n.sourceId === inviteId)).toBe(
-      true,
-    );
+    expect(
+      list.body.data.notifications.some((n: { sourceId: string }) => n.sourceId === inviteId),
+    ).toBe(true);
   });
 
   it("does not duplicate RECEIVED on create idempotency replay", async () => {
@@ -307,7 +307,9 @@ describeMeetup("integration: meetup invite notifications 028G", () => {
       workerId: "test-028g",
     });
 
-    const refreshed = await db.pushNotificationOutbox.findUniqueOrThrow({ where: { id: outbox.id } });
+    const refreshed = await db.pushNotificationOutbox.findUniqueOrThrow({
+      where: { id: outbox.id },
+    });
     expect(refreshed.status).toBe("SKIPPED");
     expect(mock.sent).toHaveLength(0);
 

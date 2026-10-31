@@ -3,7 +3,10 @@ import {
   aggregateCartTotals,
   resolveCartLineAvailability,
 } from "../src/modules/store/store-cart-lines.js";
-import { STORE_CHECKOUT_UNAVAILABLE, STORE_SUBTOTAL_DISCLAIMER } from "../src/modules/store/store.constants.js";
+import {
+  STORE_CHECKOUT_UNAVAILABLE,
+  STORE_SUBTOTAL_DISCLAIMER,
+} from "../src/modules/store/store.constants.js";
 
 const publishedActive = {
   isActive: true,

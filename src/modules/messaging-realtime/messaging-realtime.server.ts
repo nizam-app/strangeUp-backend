@@ -22,17 +22,17 @@ import {
   subscribeGroupSchema,
   typingInputSchema,
 } from "./messaging-realtime.validation.js";
-import {
-  clearTypingStateForSocket,
-  shouldEmitTypingStart,
-} from "./messaging-realtime.typing.js";
+import { clearTypingStateForSocket, shouldEmitTypingStart } from "./messaging-realtime.typing.js";
 import {
   clearServerTypingExpiryForSocket,
   emitTypingStopEvent,
   scheduleServerTypingExpiry,
 } from "./messaging-realtime.typing-expiry.js";
 import { noopMessagingRealtimeBus } from "./messaging-realtime.bus.js";
-import { registerMessagingSocketIo, clearMessagingSocketIo } from "./messaging-realtime.socket-control.js";
+import {
+  registerMessagingSocketIo,
+  clearMessagingSocketIo,
+} from "./messaging-realtime.socket-control.js";
 import type { MessagingSocketData } from "./messaging-realtime.types.js";
 
 export type { MessagingSocketData };
@@ -195,7 +195,10 @@ export function attachMessagingRealtime(deps: {
           const user = await deps.db.user.findUniqueOrThrow({ where: { id: data.userId } });
           await assertCanSubscribeGroupChat(deps.db, user, parsed.data.groupId);
           await socket.join(groupRoom(parsed.data.groupId));
-          socket.emit(MESSAGING_SOCKET_EVENTS.subscribed, { kind: "group", id: parsed.data.groupId });
+          socket.emit(MESSAGING_SOCKET_EVENTS.subscribed, {
+            kind: "group",
+            id: parsed.data.groupId,
+          });
         } catch {
           socket.emit(MESSAGING_SOCKET_EVENTS.error, {
             code: "NOT_FOUND",
@@ -227,9 +230,7 @@ export function attachMessagingRealtime(deps: {
           return;
         }
         const roomKey =
-          parsed.data.target === "dm"
-            ? dmRoom(parsed.data.id)
-            : groupRoom(parsed.data.id);
+          parsed.data.target === "dm" ? dmRoom(parsed.data.id) : groupRoom(parsed.data.id);
         try {
           if (parsed.data.target === "dm") {
             const user = await deps.db.user.findUniqueOrThrow({ where: { id: data.userId } });
@@ -272,12 +273,9 @@ export function attachMessagingRealtime(deps: {
               userId: data.userId,
             },
             emitStop: (ctx) => {
-              emitTypingStopEvent(
-                (event, payload) => {
-                  socket.to(roomKey).emit(event, payload);
-                },
-                ctx,
-              );
+              emitTypingStopEvent((event, payload) => {
+                socket.to(roomKey).emit(event, payload);
+              }, ctx);
             },
           });
         }

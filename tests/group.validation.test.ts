@@ -62,9 +62,7 @@ describe("group validation", () => {
   it("validates my groups inventory views and rejects mixed filters", () => {
     expect(myGroupListQuerySchema.parse({ view: "managed" }).view).toBe("managed");
     expect(myGroupListQuerySchema.parse({ q: "run" }).q).toBe("run");
-    expect(() =>
-      myGroupListQuerySchema.parse({ view: "joined", status: "ACTIVE" }),
-    ).toThrow();
+    expect(() => myGroupListQuerySchema.parse({ view: "joined", status: "ACTIVE" })).toThrow();
     expect(() => myGroupListQuerySchema.parse({ nearby: true })).toThrow();
   });
 

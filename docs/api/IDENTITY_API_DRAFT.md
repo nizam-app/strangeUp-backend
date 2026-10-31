@@ -58,8 +58,8 @@ Legend: **002B-Core** = proposed for Task 002B if decisions approved; **Later** 
 {
   "data": {
     "userId": "uuid",
-    "accountStatus": "PENDING_VERIFICATION",
-    "emailVerificationRequired": true
+    "accountStatus": "ACTIVE",
+    "emailVerificationRequired": false
   },
   "meta": { "requestId": "..." }
 }

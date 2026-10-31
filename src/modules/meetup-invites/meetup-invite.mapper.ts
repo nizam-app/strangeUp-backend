@@ -5,10 +5,7 @@ import {
   resolveMeetupInviteParticipantRole,
   type MeetupInviteActorContext,
 } from "./meetup-invite-policy.js";
-import type {
-  MeetupInviteDetailDto,
-  MeetupInviteListItemDto,
-} from "./meetup-invite.dto.js";
+import type { MeetupInviteDetailDto, MeetupInviteListItemDto } from "./meetup-invite.dto.js";
 import {
   redactMeetupInviteVenueForListCard,
   redactMeetupInviteVenueForViewer,

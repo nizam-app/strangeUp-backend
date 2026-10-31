@@ -6,7 +6,7 @@ import {
 } from "../src/modules/me/profile-identity-policy.js";
 import { mainAppActivatedActor } from "./helpers/activation-fixtures.js";
 
-const ctx = { isProduction: false, kycProviderEnabled: false };
+const ctx = { isProduction: false, kycProviderEnabled: false, kycManualReviewEnabled: false };
 
 describe("profile identity policy (Task 025D / 025E)", () => {
   it("locks legal names after trusted KYC approval", () => {

@@ -70,7 +70,10 @@ export class FirebaseAdminFcmSender implements FcmSender {
     if (admin.apps.length === 0) {
       const credPath = env.FIREBASE_CREDENTIALS_FILE?.trim();
       if (credPath) {
-        const serviceAccount = JSON.parse(readFileSync(credPath, "utf8")) as Record<string, unknown>;
+        const serviceAccount = JSON.parse(readFileSync(credPath, "utf8")) as Record<
+          string,
+          unknown
+        >;
         admin.initializeApp({
           credential: admin.credential.cert(serviceAccount),
           projectId: env.FIREBASE_PROJECT_ID,

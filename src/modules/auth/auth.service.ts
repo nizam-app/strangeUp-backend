@@ -83,7 +83,7 @@ export class AuthService {
   async register(input: RegisterInput): Promise<{
     userId: string;
     accountStatus: AccountStatus;
-    emailVerificationRequired: true;
+    emailVerificationRequired: false;
   }> {
     const birthDate = parseBirthDateOnly(input.dateOfBirth);
     if (!birthDate) {
@@ -113,7 +113,7 @@ export class AuthService {
           data: {
             email,
             emailNormalized,
-            accountStatus: "PENDING_VERIFICATION",
+            accountStatus: "ACTIVE",
             ageEligibilityStatus: "ELIGIBLE",
             profile: {
               create: {
@@ -140,12 +140,10 @@ export class AuthService {
         return created;
       });
 
-      await this.createAndSendEmailVerification(user.id, emailNormalized, email);
-
       return {
         userId: user.id,
         accountStatus: user.accountStatus,
-        emailVerificationRequired: true,
+        emailVerificationRequired: false,
       };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
@@ -292,23 +290,18 @@ export class AuthService {
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-    const { onUserLogoutAll } = await import(
-      "../messaging-realtime/messaging-realtime.lifecycle.js"
-    );
-    const { revokeDeviceTokensForUser } = await import(
-      "../push-devices/device-token.service.js"
-    );
+    const { onUserLogoutAll } =
+      await import("../messaging-realtime/messaging-realtime.lifecycle.js");
+    const { revokeDeviceTokensForUser } = await import("../push-devices/device-token.service.js");
     void onUserLogoutAll(userId).catch(() => undefined);
     await revokeDeviceTokensForUser(this.db, userId);
   }
 
   private async afterSessionRevoked(sessionId: string, userId: string): Promise<void> {
-    const { onSessionRevoked } = await import(
-      "../messaging-realtime/messaging-realtime.lifecycle.js"
-    );
-    const { revokeDeviceTokensForSession } = await import(
-      "../push-devices/device-token.service.js"
-    );
+    const { onSessionRevoked } =
+      await import("../messaging-realtime/messaging-realtime.lifecycle.js");
+    const { revokeDeviceTokensForSession } =
+      await import("../push-devices/device-token.service.js");
     void onSessionRevoked(sessionId).catch(() => undefined);
     await revokeDeviceTokensForSession(this.db, userId, sessionId);
   }

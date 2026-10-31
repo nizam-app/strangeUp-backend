@@ -154,9 +154,7 @@ describePush("integration: push devices & preferences (Task 023C)", () => {
     });
     expect(bound?.sessionId).toBeTruthy();
 
-    await request(app)
-      .post("/v1/auth/logout")
-      .set("Authorization", `Bearer ${user.accessToken}`);
+    await request(app).post("/v1/auth/logout").set("Authorization", `Bearer ${user.accessToken}`);
 
     const denied = await request(app)
       .get("/v1/me/device-tokens")

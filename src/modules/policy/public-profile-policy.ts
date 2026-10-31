@@ -39,6 +39,7 @@ export type PublicKycContext = KycEnforcementContext;
 const DEFAULT_PUBLIC_KYC_CONTEXT: PublicKycContext = {
   isProduction: false,
   kycProviderEnabled: false,
+  kycManualReviewEnabled: false,
 };
 
 function snapshotToKycTrust(user: DiscoverUserSnapshot): KycTrustSnapshot {
@@ -61,7 +62,6 @@ export function hasTrustedGovernmentIdKycApproved(
 export function isEligiblePublicProfileTarget(user: DiscoverUserSnapshot): boolean {
   return (
     user.accountStatus === "ACTIVE" &&
-    user.emailVerifiedAt !== null &&
     user.ageEligibilityStatus === "ELIGIBLE" &&
     user.suspendedAt === null &&
     user.deletedAt === null

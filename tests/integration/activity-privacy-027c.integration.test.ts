@@ -76,7 +76,11 @@ describe.runIf(runIntegration)("Task 027C activity privacy (Neon)", () => {
     const guest = await createIntegrationUser(app, emailSender, db, "t027c-guest");
     const outsider = await createIntegrationUser(app, emailSender, db, "t027c-outsider");
 
-    const activityId = await publishInPersonActivity(app, host.accessToken, "Revocation parity ride");
+    const activityId = await publishInPersonActivity(
+      app,
+      host.accessToken,
+      "Revocation parity ride",
+    );
 
     const join = await request(app)
       .post(`/v1/activities/${activityId}/rsvp`)
@@ -156,7 +160,11 @@ describe.runIf(runIntegration)("Task 027C activity privacy (Neon)", () => {
   it("T027C-P02 participant KYC revocation denies meeting but preserves CONFIRMED participation", async () => {
     const host = await createIntegrationUser(app, emailSender, db, "t027c-kyc-host");
     const guest = await createIntegrationUser(app, emailSender, db, "t027c-kyc-guest");
-    const activityId = await publishInPersonActivity(app, host.accessToken, "KYC meeting gate ride");
+    const activityId = await publishInPersonActivity(
+      app,
+      host.accessToken,
+      "KYC meeting gate ride",
+    );
 
     expect(
       (
@@ -194,7 +202,11 @@ describe.runIf(runIntegration)("Task 027C activity privacy (Neon)", () => {
 
   it("T027C-P03 inventory upcoming regression (027B) still omits meeting fields", async () => {
     const host = await createIntegrationUser(app, emailSender, db, "t027c-inv-host");
-    const activityId = await publishInPersonActivity(app, host.accessToken, "Inventory privacy ride");
+    const activityId = await publishInPersonActivity(
+      app,
+      host.accessToken,
+      "Inventory privacy ride",
+    );
 
     const inventory = await request(app)
       .get("/v1/me/activity-inventory")

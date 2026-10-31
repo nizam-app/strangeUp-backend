@@ -4,7 +4,7 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import {
   IDENTITY_REVIEWER_ROLE,
-  userHasActivePlatformStaffRole,
+  userHasActivePlatformStaffRoleOrSuperAdmin,
 } from "./platform-staff-policy.js";
 
 export function createRequireIdentityReviewerMiddleware(db: DatabaseClient) {
@@ -13,7 +13,7 @@ export function createRequireIdentityReviewerMiddleware(db: DatabaseClient) {
       next(new AppError("AUTH_UNAUTHORIZED", "Not authenticated", 401));
       return;
     }
-    const allowed = await userHasActivePlatformStaffRole(
+    const allowed = await userHasActivePlatformStaffRoleOrSuperAdmin(
       db,
       req.authUser.id,
       IDENTITY_REVIEWER_ROLE,

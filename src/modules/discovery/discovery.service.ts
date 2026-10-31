@@ -3,11 +3,9 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { AppEnv } from "../../config/env.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { toPolicyActor } from "../policy/account-policy.js";
-import {
-  canBrowseDiscovery,
-  toDiscoverUserSnapshot,
-} from "../policy/public-profile-policy.js";
+import { canBrowseDiscovery, toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import type { KycEnforcementContext } from "../verification/kyc-trust.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
 import { buildDiscoverableUsersWhere } from "./discover-query.js";
 import { isRowDiscoverableTarget } from "./discover-target-policy.js";
 import { DISCOVER_PEOPLE_DEFAULT_LIMIT, DISCOVER_PEOPLE_MAX_LIMIT } from "./discovery.constants.js";
@@ -53,10 +51,7 @@ export class DiscoveryService {
   ) {}
 
   private kycContext(): KycEnforcementContext {
-    return {
-      isProduction: this.env.isProduction,
-      kycProviderEnabled: this.env.KYC_PROVIDER_ENABLED,
-    };
+    return buildKycEnforcementContext(this.env);
   }
 
   async listDiscoverablePeople(

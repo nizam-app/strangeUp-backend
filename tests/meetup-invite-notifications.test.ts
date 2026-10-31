@@ -18,12 +18,8 @@ const FORBIDDEN = [
 describe("meetup invite notifications (028G)", () => {
   it("uses stable dedupe keys", () => {
     const id = "550e8400-e29b-41d4-a716-446655440000";
-    expect(meetupInviteNotificationDedupeKey(id, "received")).toBe(
-      `meetup-invite:${id}:received`,
-    );
-    expect(meetupInviteNotificationDedupeKey(id, "accepted")).toBe(
-      `meetup-invite:${id}:accepted`,
-    );
+    expect(meetupInviteNotificationDedupeKey(id, "received")).toBe(`meetup-invite:${id}:received`);
+    expect(meetupInviteNotificationDedupeKey(id, "accepted")).toBe(`meetup-invite:${id}:accepted`);
   });
 
   it("keeps in-app copy free of private meetup fields", () => {

@@ -724,9 +724,7 @@ describeGroups("integration: groups & communities (Task 012)", () => {
     expect(outsiderCover.status).toBe(404);
 
     for (const token of [member.accessToken, member2.accessToken]) {
-      await request(app)
-        .post(`/v1/groups/${groupId}/join`)
-        .set("Authorization", `Bearer ${token}`);
+      await request(app).post(`/v1/groups/${groupId}/join`).set("Authorization", `Bearer ${token}`);
     }
     const requests = await request(app)
       .get(`/v1/me/groups/${groupId}/join-requests`)
@@ -913,9 +911,9 @@ describeGroups("integration: groups & communities (Task 012)", () => {
     const pendingList = await request(app)
       .get("/v1/me/groups?view=pending")
       .set("Authorization", `Bearer ${member.accessToken}`);
-    expect(pendingList.body.data.groups.some((g: { groupId: string }) => g.groupId === pendingGroupId)).toBe(
-      true,
-    );
+    expect(
+      pendingList.body.data.groups.some((g: { groupId: string }) => g.groupId === pendingGroupId),
+    ).toBe(true);
 
     const requests = await request(app)
       .get(`/v1/me/groups/${pendingGroupId}/join-requests`)

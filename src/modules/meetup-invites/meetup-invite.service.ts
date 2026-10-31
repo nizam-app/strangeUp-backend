@@ -29,7 +29,10 @@ import {
   type MeetupInviteCreatePayloadFingerprint,
 } from "./meetup-invite-idempotency.js";
 import { toMeetupInviteDetailDto, toMeetupInviteListItemDto } from "./meetup-invite.mapper.js";
-import { canCreateMeetupInviteGivenExistingPending, evaluateMeetupInviteMutation } from "./meetup-invite-policy.js";
+import {
+  canCreateMeetupInviteGivenExistingPending,
+  evaluateMeetupInviteMutation,
+} from "./meetup-invite-policy.js";
 import { meetupInviteTransitionError } from "./meetup-invite-transition-errors.js";
 import type { MeetupInviteMutationAction } from "./meetup-invite.types.js";
 import { NotificationEmitter } from "../notifications/notification-emitter.service.js";
@@ -144,10 +147,7 @@ export class MeetupInviteService {
 
     let scopedIdempotencyKey: string | undefined;
     if (idempotencyHeaderKey?.trim()) {
-      scopedIdempotencyKey = scopeMeetupInviteCreateIdempotencyKey(
-        sender.id,
-        idempotencyHeaderKey,
-      );
+      scopedIdempotencyKey = scopeMeetupInviteCreateIdempotencyKey(sender.id, idempotencyHeaderKey);
       const existing = await this.db.personalMeetupInvitation.findUnique({
         where: { createIdempotencyKey: scopedIdempotencyKey },
         include: inviteInclude,
@@ -195,7 +195,11 @@ export class MeetupInviteService {
       select: { id: true },
     });
     if (!canCreateMeetupInviteGivenExistingPending(pendingExists !== null)) {
-      throw new AppError("CONFLICT", "A pending meetup invitation already exists for this recipient", 409);
+      throw new AppError(
+        "CONFLICT",
+        "A pending meetup invitation already exists for this recipient",
+        409,
+      );
     }
 
     try {
@@ -250,7 +254,10 @@ export class MeetupInviteService {
 
     const box = query.box ?? "incoming";
     const statusFilter = query.status ?? "pending";
-    const limit = Math.min(query.limit ?? MEETUP_INVITE_LIST_DEFAULT_LIMIT, MEETUP_INVITE_LIST_MAX_LIMIT);
+    const limit = Math.min(
+      query.limit ?? MEETUP_INVITE_LIST_DEFAULT_LIMIT,
+      MEETUP_INVITE_LIST_MAX_LIMIT,
+    );
 
     let cursor: { createdAt: Date; id: string } | undefined;
     if (query.cursor) {
@@ -388,12 +395,7 @@ export class MeetupInviteService {
     }
 
     const ctx = await assertMeetupInviteReadable(this.db, viewer, row);
-    await assertMeetupInviteParticipantsEligible(
-      this.db,
-      row.senderId,
-      row.recipientId,
-      this.kyc,
-    );
+    await assertMeetupInviteParticipantsEligible(this.db, row.senderId, row.recipientId, this.kyc);
 
     if (action === "accept") {
       this.assertRecipientKyc(viewer);

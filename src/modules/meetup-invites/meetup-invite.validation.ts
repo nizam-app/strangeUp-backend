@@ -24,9 +24,7 @@ export const meetupInviteIdParamSchema = z.object({
 
 export const meetupInviteListQuerySchema = z.object({
   box: z.enum(["incoming", "outgoing"]).optional(),
-  status: z
-    .enum(["pending", "accepted", "declined", "withdrawn", "expired", "all"])
-    .optional(),
+  status: z.enum(["pending", "accepted", "declined", "withdrawn", "expired", "all"]).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
   cursor: z.string().min(1).optional(),
 });

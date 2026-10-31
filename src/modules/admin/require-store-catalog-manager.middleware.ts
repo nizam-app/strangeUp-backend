@@ -4,7 +4,7 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import {
   STORE_CATALOG_MANAGER_ROLE,
-  userHasActivePlatformStaffRole,
+  userHasActivePlatformStaffRoleOrSuperAdmin,
 } from "./platform-staff-policy.js";
 
 export function createRequireStoreCatalogManagerMiddleware(db: DatabaseClient) {
@@ -13,7 +13,7 @@ export function createRequireStoreCatalogManagerMiddleware(db: DatabaseClient) {
       next(new AppError("AUTH_UNAUTHORIZED", "Not authenticated", 401));
       return;
     }
-    const allowed = await userHasActivePlatformStaffRole(
+    const allowed = await userHasActivePlatformStaffRoleOrSuperAdmin(
       db,
       req.authUser.id,
       STORE_CATALOG_MANAGER_ROLE,

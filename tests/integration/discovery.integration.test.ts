@@ -154,9 +154,9 @@ describeDiscovery("integration: discovery & public profiles (Task 009)", () => {
       .get(`/v1/discover/people?q=${encodeURIComponent(tag)}`)
       .set("Authorization", `Bearer ${viewer.accessToken}`);
     expect(list.status).toBe(200);
-    expect(
-      list.body.data.people.some((p: { userId: string }) => p.userId === pending.userId),
-    ).toBe(false);
+    expect(list.body.data.people.some((p: { userId: string }) => p.userId === pending.userId)).toBe(
+      false,
+    );
 
     const detail = await request(app)
       .get(`/v1/users/${pending.userId}`)

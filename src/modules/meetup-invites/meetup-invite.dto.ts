@@ -1,4 +1,7 @@
-import type { PersonalMeetupInviteStatus, PersonalMeetupInviteType } from "../../../generated/prisma/client.js";
+import type {
+  PersonalMeetupInviteStatus,
+  PersonalMeetupInviteType,
+} from "../../../generated/prisma/client.js";
 import type { MeetupInviteVenueView } from "./meetup-invite.types.js";
 
 export type MeetupInviteCounterpartyDto = {

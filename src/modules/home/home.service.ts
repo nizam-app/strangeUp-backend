@@ -5,6 +5,8 @@ import { createAppMediaStorages } from "../../infrastructure/media-storage/creat
 import { DiscoveryService } from "../discovery/discovery.service.js";
 import { GroupService } from "../groups/group.service.js";
 import type { AppEnv } from "../../config/env.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
+import type { KycEnforcementContext } from "../verification/kyc-trust.js";
 import { NotificationService } from "../notifications/notification.service.js";
 import { CommunityFeedService } from "./community-feed.service.js";
 import {
@@ -52,19 +54,13 @@ export class HomeService {
   private readonly discoveryService: DiscoveryService;
   private readonly communityFeedService: CommunityFeedService;
   private readonly notificationService: NotificationService;
-  private readonly activityKyc: {
-    isProduction: boolean;
-    kycProviderEnabled: boolean;
-  };
+  private readonly activityKyc: KycEnforcementContext;
 
   constructor(
     private readonly db: DatabaseClient,
     env: AppEnv,
   ) {
-    this.activityKyc = {
-      isProduction: env.isProduction,
-      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
-    };
+    this.activityKyc = buildKycEnforcementContext(env);
     const kyc = this.activityKyc;
     const mediaStorages = createAppMediaStorages(env);
     this.groupService = new GroupService(db, mediaStorages.groupCover);

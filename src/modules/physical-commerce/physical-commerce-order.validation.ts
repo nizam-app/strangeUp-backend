@@ -15,7 +15,11 @@ export const physicalOrderShippingAddressSnapshotSchema = z.object({
   city: z.string().trim().min(1).max(80),
   region: z.string().trim().min(1).max(80),
   postalCode: z.string().trim().min(1).max(32),
-  countryCode: z.string().trim().length(2).regex(/^[A-Z]{2}$/),
+  countryCode: z
+    .string()
+    .trim()
+    .length(2)
+    .regex(/^[A-Z]{2}$/),
 });
 
 export const physicalOrderFulfillmentSelectionSchema = z.discriminatedUnion("method", [

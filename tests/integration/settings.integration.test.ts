@@ -209,7 +209,9 @@ describeSettings("integration: settings & saved activities (Task 015)", () => {
   });
 
   it("T015-P05 session inventory and per-session revoke", async () => {
-    const user = await verifiedUser(app, emailSender, db, "t015-sessions", { mainAppAccess: false });
+    const user = await verifiedUser(app, emailSender, db, "t015-sessions", {
+      mainAppAccess: false,
+    });
     await request(app).post("/v1/auth/login").send({ email: user.email, password: "ValidPass1" });
 
     const list = await request(app)

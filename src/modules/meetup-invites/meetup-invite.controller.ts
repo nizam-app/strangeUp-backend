@@ -3,6 +3,7 @@ import type { AppEnv } from "../../config/env.js";
 import type { AuthenticatedRequest } from "../../common/middleware/authenticate.js";
 import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
 import { MEETUP_INVITE_IDEMPOTENCY_HEADER } from "./meetup-invite.constants.js";
 import { MeetupInviteService } from "./meetup-invite.service.js";
 import {
@@ -19,10 +20,7 @@ function requireUser(req: AuthenticatedRequest) {
 }
 
 export function createMeetupInviteController(deps: { db: DatabaseClient; env: AppEnv }) {
-  const kyc = {
-    isProduction: deps.env.isProduction,
-    kycProviderEnabled: deps.env.KYC_PROVIDER_ENABLED,
-  };
+  const kyc = buildKycEnforcementContext(deps.env);
   const service = new MeetupInviteService(deps.db, kyc);
 
   return {

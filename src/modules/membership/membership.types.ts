@@ -4,10 +4,7 @@ export type MembershipPlanId = (typeof MEMBERSHIP_PLAN_IDS)[number];
 export type PlanOfferAvailability = "AVAILABLE" | "COMING_SOON" | "NOT_CONFIGURED";
 
 export type EntitlementCapabilityStatus =
-  | "AVAILABLE"
-  | "NOT_CONFIGURED"
-  | "DEFERRED"
-  | "NOT_IMPLEMENTED";
+  "AVAILABLE" | "NOT_CONFIGURED" | "DEFERRED" | "NOT_IMPLEMENTED";
 
 export type MembershipFlowDeferredStatus = "DEFERRED" | "NOT_CONFIGURED" | "UNAVAILABLE";
 

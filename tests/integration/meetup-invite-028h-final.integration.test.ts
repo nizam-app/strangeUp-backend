@@ -198,7 +198,11 @@ describeH("integration: Task 028H final meetup flow verification", () => {
       emitInTransaction: vi.fn().mockRejectedValue(new Error("simulated notification failure")),
       emit: vi.fn(),
     } as unknown as NotificationEmitter;
-    const kyc = { isProduction: env.isProduction, kycProviderEnabled: env.KYC_PROVIDER_ENABLED };
+    const kyc = {
+      isProduction: env.isProduction,
+      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
+      kycManualReviewEnabled: false,
+    };
     const service = new MeetupInviteService(db, kyc, failingEmitter);
 
     await expect(
@@ -231,11 +235,18 @@ describeH("integration: Task 028H final meetup flow verification", () => {
     expect(discover.status).toBe(200);
 
     expect(
-      (await request(app).post(`/v1/users/${b.userId}/follow`).set("Authorization", `Bearer ${a.accessToken}`))
-        .status,
+      (
+        await request(app)
+          .post(`/v1/users/${b.userId}/follow`)
+          .set("Authorization", `Bearer ${a.accessToken}`)
+      ).status,
     ).toBe(200);
     expect(
-      (await request(app).post(`/v1/users/${b.userId}/wave`).set("Authorization", `Bearer ${a.accessToken}`)).status,
+      (
+        await request(app)
+          .post(`/v1/users/${b.userId}/wave`)
+          .set("Authorization", `Bearer ${a.accessToken}`)
+      ).status,
     ).toBe(200);
     expect(
       (

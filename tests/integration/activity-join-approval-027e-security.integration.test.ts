@@ -278,7 +278,10 @@ describe.runIf(runIntegration)("Task 027E security regression (Neon)", () => {
     expect(draft.status).toBe(201);
     expect(draft.body.data.joinMode).toBe("AUTO");
     const activityId = draft.body.data.activityId as string;
-    const row = await db.activity.findUnique({ where: { id: activityId }, select: { joinMode: true } });
+    const row = await db.activity.findUnique({
+      where: { id: activityId },
+      select: { joinMode: true },
+    });
     expect(row?.joinMode).toBe("AUTO");
   });
 

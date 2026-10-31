@@ -3,6 +3,10 @@ import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import type { AppEnv } from "../../config/env.js";
 import { VerificationService } from "./verification.service.js";
 import { AppError } from "../../common/errors/app-error.js";
+import {
+  extractVeriffAuthClientHeader,
+  extractWebhookHmacSignature,
+} from "./veriff-webhook-headers.js";
 
 export function createVerificationWebhookController(deps: { db: DatabaseClient; env: AppEnv }) {
   const service = new VerificationService(deps.db, deps.env);
@@ -15,9 +19,7 @@ export function createVerificationWebhookController(deps: { db: DatabaseClient; 
         throw new AppError("VALIDATION_ERROR", "Expected raw webhook body", 400);
       }
 
-      const signature =
-        (req.headers["x-hmac-signature"] as string | undefined) ??
-        (req.headers["x-signature"] as string | undefined);
+      const signature = extractWebhookHmacSignature(req.headers);
 
       if (provider === "mock") {
         const result = await service.processMockWebhook(rawBody, signature);
@@ -29,11 +31,17 @@ export function createVerificationWebhookController(deps: { db: DatabaseClient; 
       }
 
       if (provider === "veriff") {
-        throw new AppError(
-          "SERVICE_UNAVAILABLE",
-          "Veriff webhook processing requires owner-approved activation",
-          503,
-        );
+        const clientHeader = extractVeriffAuthClientHeader(req.headers);
+        const result = await service.processVeriffWebhook(rawBody, signature, clientHeader);
+        res.status(200).json({
+          data: {
+            accepted: true,
+            duplicate: result.duplicate ?? false,
+            ignored: result.ignored ?? false,
+          },
+          meta: { requestId: req.requestId },
+        });
+        return;
       }
 
       throw new AppError("NOT_FOUND", "Unknown verification provider", 404);

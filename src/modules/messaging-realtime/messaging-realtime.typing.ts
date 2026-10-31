@@ -5,7 +5,11 @@ export function typingKey(userId: string, roomKey: string): string {
 }
 
 /** Returns false when throttled (caller should not broadcast). */
-export function shouldEmitTypingStart(userId: string, roomKey: string, minIntervalMs: number): boolean {
+export function shouldEmitTypingStart(
+  userId: string,
+  roomKey: string,
+  minIntervalMs: number,
+): boolean {
   const key = typingKey(userId, roomKey);
   const now = Date.now();
   const last = lastTypingStart.get(key) ?? 0;

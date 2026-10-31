@@ -1,5 +1,8 @@
 import type { PersonalMeetupInviteStatus } from "../../../generated/prisma/client.js";
-import type { MeetupInviteMutationAction, MeetupInviteParticipantRole } from "./meetup-invite.types.js";
+import type {
+  MeetupInviteMutationAction,
+  MeetupInviteParticipantRole,
+} from "./meetup-invite.types.js";
 import { MEETUP_INVITE_TERMINAL_STATUSES } from "./meetup-invite.types.js";
 
 export type MeetupInviteTransitionDecision =

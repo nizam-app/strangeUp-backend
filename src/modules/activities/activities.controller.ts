@@ -10,6 +10,7 @@ import { ActivityRosterService } from "./activity-roster.service.js";
 import { ActivityMyInventoryService } from "./activity-my-inventory.service.js";
 import { ActivityRsvpService } from "./activity-rsvp.service.js";
 import { ActivityService } from "./activity.service.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
 import {
   activityIdParamSchema,
   activityListQuerySchema,
@@ -24,10 +25,7 @@ import {
 } from "./activity.validation.js";
 
 export function createActivitiesControllers(deps: { db: DatabaseClient; env: AppEnv }) {
-  const kyc = {
-    isProduction: deps.env.isProduction,
-    kycProviderEnabled: deps.env.KYC_PROVIDER_ENABLED,
-  };
+  const kyc = buildKycEnforcementContext(deps.env);
   const mediaStorages = createAppMediaStorages(deps.env);
   const activityService = new ActivityService(deps.db, mediaStorages.activityCover, kyc);
   const hostService = new ActivityHostService(deps.db, mediaStorages.activityCover, kyc);

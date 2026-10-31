@@ -226,7 +226,7 @@ describeMe("integration: password reset and /v1/me", () => {
       .get("/v1/me/account")
       .set("Authorization", `Bearer ${accessToken}`);
     expect(account.status).toBe(200);
-    expect(account.body.data.accountStatus).toBe("PENDING_VERIFICATION");
+    expect(account.body.data.accountStatus).toBe("ACTIVE");
     expect(account.body.data.emailVerified).toBe(false);
     expect(account.body.data.passwordHash).toBeUndefined();
 

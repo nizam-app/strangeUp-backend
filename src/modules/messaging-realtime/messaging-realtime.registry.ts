@@ -1,7 +1,4 @@
-import {
-  noopMessagingRealtimeBus,
-  type MessagingRealtimeBus,
-} from "./messaging-realtime.bus.js";
+import { noopMessagingRealtimeBus, type MessagingRealtimeBus } from "./messaging-realtime.bus.js";
 
 let activeBus: MessagingRealtimeBus = noopMessagingRealtimeBus;
 

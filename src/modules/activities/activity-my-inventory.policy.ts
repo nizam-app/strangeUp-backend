@@ -3,12 +3,7 @@ import type { ActivityStatus } from "../../../generated/prisma/client.js";
 export type ActivityWhenFilter = "upcoming" | "past" | "all";
 
 export type MyActivityInventoryView =
-  | "upcoming"
-  | "hosting"
-  | "joined"
-  | "waitlisted"
-  | "pending"
-  | "past";
+  "upcoming" | "hosting" | "joined" | "waitlisted" | "pending" | "past";
 
 export function activityStartsAtWhere(
   when: ActivityWhenFilter,

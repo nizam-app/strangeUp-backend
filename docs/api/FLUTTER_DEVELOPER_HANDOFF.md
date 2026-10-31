@@ -138,11 +138,12 @@ GET /health/ready
 
 ### Recommended flow
 
-1. `POST /v1/auth/register` with `Idempotency-Key` header (UUID).
-2. User completes email verification via deep link → `POST /v1/auth/email-verification/confirm` with `{ "token": "..." }`.
-3. `POST /v1/auth/login` → store tokens securely.
-4. On 401 from protected routes, `POST /v1/auth/refresh` then retry once (**serialize** refresh — see below).
-5. Settings: `POST /v1/auth/logout` or `POST /v1/auth/logout-all` with bearer access token.
+1. `POST /v1/auth/register` with `Idempotency-Key` header (UUID) → **`accountStatus: ACTIVE`**, **`emailVerificationRequired: false`** (no mandatory verify email).
+2. `POST /v1/auth/login` → store tokens securely.
+3. **Optional:** `POST /v1/auth/email-verification/request` (authenticated) then deep link → `POST /v1/auth/email-verification/confirm` — sets `emailVerifiedAt`; **not** required for IDV or Home.
+4. `GET /v1/me/onboarding/status` → route by `nextAction` (**`START_IDENTITY_VERIFICATION`** after register when mock/Veriff enabled; **`VERIFY_EMAIL` is legacy and not returned** for new onboarding).
+5. On 401 from protected routes, `POST /v1/auth/refresh` then retry once (**serialize** refresh — see below).
+6. Settings: `POST /v1/auth/logout` or `POST /v1/auth/logout-all` with bearer access token.
 
 ### Token storage and refresh (security)
 
@@ -263,11 +264,11 @@ Call after **every login** and on Screen 07 / post-register navigation. This is 
 
 **Response highlights:** `homeAccessAllowed`, `onboardingPhase`, `effectiveApplicationAccess`, `nextAction`, `canStartVerification`, `canRetry`, `adminReviewStatus`, `identityVerificationStatus`, `emailVerificationStatus`, `verificationStepHint`, `limitations[]`.
 
-**`onboardingPhase` (stable):** `AWAITING_EMAIL_VERIFICATION`, `READY_FOR_IDENTITY_VERIFICATION`, `IDENTITY_VERIFICATION_IN_PROGRESS`, `IDENTITY_RESUBMISSION_REQUIRED`, `AWAITING_PROVIDER_DECISION`, `PROVIDER_DECLINED_OR_EXPIRED`, `AWAITING_ADMIN_REVIEW`, `ADMIN_REJECTED`, `FULLY_ACTIVATED`.
+**`onboardingPhase` (stable):** `READY_FOR_IDENTITY_VERIFICATION`, `IDENTITY_VERIFICATION_IN_PROGRESS`, `IDENTITY_RESUBMISSION_REQUIRED`, `AWAITING_PROVIDER_DECISION`, `PROVIDER_DECLINED_OR_EXPIRED`, `AWAITING_ADMIN_REVIEW`, `ADMIN_REJECTED`, `FULLY_ACTIVATED`. (`AWAITING_EMAIL_VERIFICATION` is legacy — not emitted for new accounts.)
 
-**`nextAction` values:** `VERIFY_EMAIL`, `START_IDENTITY_VERIFICATION`, `CONTINUE_IDENTITY_VERIFICATION`, `WAIT_FOR_PROVIDER_DECISION`, `WAIT_FOR_ADMIN_REVIEW`, `ADMIN_REJECTED`, `RETRY_IDENTITY_VERIFICATION`, `HOME_READY`, `CONTACT_SUPPORT`, `ACCOUNT_SUSPENDED`.
+**`nextAction` values:** `START_IDENTITY_VERIFICATION`, `CONTINUE_IDENTITY_VERIFICATION`, `WAIT_FOR_PROVIDER_DECISION`, `WAIT_FOR_ADMIN_REVIEW`, `ADMIN_REJECTED`, `RETRY_IDENTITY_VERIFICATION`, `HOME_READY`, `CONTACT_SUPPORT`, `ACCOUNT_SUSPENDED`. (`VERIFY_EMAIL` is legacy — not emitted for new onboarding.)
 
-**Register → IDV:** `POST /v1/auth/register` does **not** return tokens. After register, route to login (or email verify) then call this endpoint before any Home navigation. `user.fullAccess` on login remains `false` until provider KYC **and** StrangeUp admin approval (see ADR-005).
+**Register → IDV:** `POST /v1/auth/register` does **not** return tokens. After register, **login** then call this endpoint before any Home navigation. **`emailVerificationStatus: UNVERIFIED` does not block IDV.** `user.fullAccess` on login remains `false` until provider KYC **and** StrangeUp admin approval (see ADR-005 + 2026-10-30 amendment).
 
 **Figma auth ZIP parity (Task 022D):** Screen-by-screen classification — `docs/product/FIGMA_AUTH_FLOW_PARITY_TASK022.md`. Government ID + selfie capture are **Veriff SDK only** (no backend upload). Apple/Google login buttons are **DEFERRED** (no OAuth routes). Email verification and admin-waiting UI were **not** in the auth ZIP; use onboarding API states.
 
@@ -297,13 +298,13 @@ final account = jsonDecode(res.body)['data'];
 final fullAccess = account['fullAccess'] as bool; // false until admin + provider KYC (ADR-005)
 ```
 
-Pending users: **can** read account and onboarding status; **cannot** PATCH profile until `emailVerified` and age eligible (`403`). **`fullAccess` false** does not block IDV session start once email is verified.
+Authenticated **ACTIVE** age-eligible users: **can** read account/onboarding and **PATCH profile** even when `emailVerified` is false. **`fullAccess` false** does not block IDV session start. Main-app routes still require `homeAccessAllowed` (KYC + admin).
 
 ### `GET` / `PATCH /v1/me/profile`
 
 **PATCH allowlist only:** `firstName`, `lastName`, `displayName`, `username`, `bio`, `scheduleTimeZone` (IANA), `profileVisibility` (`EVERYONE` | `VERIFIED_USERS_ONLY`), `locationCity`, `locationRegion` (text only; `null` clears).
 
-**Visibility default (OWN-PROFILE-02):** New accounts return `profileVisibility: VERIFIED_USERS_ONLY` on first `GET /v1/me/profile` until the user chooses `EVERYONE`. This does **not** affect who can edit the profile (still email-verified + age eligible). Cross-user visibility enforcement waits D-03; `VERIFIED_USERS_ONLY` viewers in the future require **government-ID KYC approved** — not email verification alone.
+**Visibility default (OWN-PROFILE-02):** New accounts return `profileVisibility: VERIFIED_USERS_ONLY` on first `GET /v1/me/profile` until the user chooses `EVERYONE`. Profile edit requires **ACTIVE + age eligible** (email verification not required). Cross-user visibility enforcement waits D-03; `VERIFIED_USERS_ONLY` viewers require **government-ID KYC approved** — not email verification alone.
 **Not writable via PATCH:** `birthDate`, `dateOfBirth`, `accountStatus`, `emailVerified`, KYC fields, `role`, `userId`, etc.
 
 ```dart
@@ -324,7 +325,7 @@ await http.patch(
 
 `birthDate` is returned on GET for the owner but cannot be changed through this API (registration-time field).
 
-**Gating for Save (Edit Personal Details — Task 025D / `Html → Body.pdf`):** After login, call `GET /v1/me/profile` and `GET /v1/me/account`. If `emailVerified` is false or `ageEligibilityStatus` is not `ELIGIBLE`, disable save (`403 AUTH_FORBIDDEN` on PATCH). When **`legalNameLocked === true`** (trusted KYC and/or prior staff identity approval — **sticky** after expiry/revocation; Task 025D/025E), disable first/last name fields — server rejects those PATCH keys. Corrections require owner-approved support flow (not self-serve PATCH). **`birthDate` is never PATCHable.** Main-app gate: `GET /v1/me/settings/overview`, interests, favorite-activities, avatar POST/DELETE (after gate), blocks, saved activities → `403 ONBOARDING_REQUIRED` until `homeAccessAllowed`. Main Flow parity: `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025E.md` (Profile detail: `FIGMA_MAIN_FLOW_PARITY_TASK025D.md`).
+**Gating for Save (Edit Personal Details — Task 025D / `Html → Body.pdf`):** After login, call `GET /v1/me/profile` and `GET /v1/me/account`. If `ageEligibilityStatus` is not `ELIGIBLE` or account is not editable (`403 AUTH_FORBIDDEN` on PATCH). When **`legalNameLocked === true`** (trusted KYC and/or prior staff identity approval — **sticky** after expiry/revocation; Task 025D/025E), disable first/last name fields — server rejects those PATCH keys. Corrections require owner-approved support flow (not self-serve PATCH). **`birthDate` is never PATCHable.** Main-app gate: `GET /v1/me/settings/overview`, interests, favorite-activities, avatar POST/DELETE (after gate), blocks, saved activities → `403 ONBOARDING_REQUIRED` until `homeAccessAllowed`. Main Flow parity: `docs/product/FIGMA_MAIN_FLOW_PARITY_TASK025E.md` (Profile detail: `FIGMA_MAIN_FLOW_PARITY_TASK025D.md`).
 
 `GET /v1/me/profile` also returns `profileVisibility`, `locationCity`, `locationRegion`, `hasAvatar`, and `avatarUpdatedAt`. Use `hasAvatar` before calling `GET /v1/me/profile/avatar`. Do **not** show a government-ID or “verified location” badge from these fields alone.
 
@@ -509,23 +510,70 @@ Authoritative: `docs/product/KYC_OWNER_DECISIONS_002B3A2.md`. **Task 021** added
 |---|---|---|
 | Consent catalog | `GET /v1/consents/required` | **Now** — required for register and job apply |
 | KYC self-service status | `GET /v1/me/verification/status` | **Now** — drive empty/disabled states from `providerRuntimeStatus` / `canStartVerification` |
-| Start / poll / cancel session | `POST/GET …/verification/sessions*` | **Only when** backend confirms provider enabled (shared dev API or staging); never fake `APPROVED` locally |
-| Provider SDK / Veriff | N/A | **BLOCKED BY OWNER (KYC-02)** until backend team announces activation |
+| Start / poll / cancel session | `POST/GET …/verification/sessions*` | **Only when** `GET /v1/me/verification/status` returns `canStartVerification: true` and `providerRuntimeStatus: "VERIFF_READY"` or `"MOCK"` |
+| Veriff Flutter SDK | Official `veriff_flutter` | **Sandbox only** — requires owner-approved ops config (`VERIFF_LIVE_CALLS_ENABLED=true` on non-production backend); never embed `VERIFF_SHARED_SECRET` |
 
 **Production default:** provider **disabled** — show verification-needed messaging on gated activity actions using `IDENTITY_VERIFICATION_REQUIRED`, not a completed ID flow. Screens #34, #48, #49 — design against **`/v1/me/verification/status`**; full SDK flow waits on owner + ops.
 
-**Pending Flutter responsibilities (after backend + vendor exist — PROPOSED):**
+### Veriff sandbox handoff (Task 031I-1 — backend contract only)
+
+1. **Precheck:** `GET /v1/me/verification/status` — require `canStartVerification: true`. Typical gates: account `ACTIVE`, age eligible, no terminal KYC, provider enabled.
+2. **Start session:** `POST /v1/me/verification/sessions` with optional `{ "locale": "en-US" }` (locale is stored for future use; Veriff session creation currently sends `endUserId` only).
+3. **Launch fields (201 response `data`):**
+   - `clientAction`: always `"SDK"` for Veriff.
+   - `redirectUrl`: Veriff `verification.url` — **primary** input for `Veriff.start(Configuration(sessionUrl: redirectUrl))` per [Veriff Flutter plugin](https://devdocs.veriff.com/docs/flutter-plugin).
+   - `sdkToken`: Veriff `sessionToken` (legacy/auxiliary; prefer `redirectUrl` when the pinned SDK accepts session URL).
+   - `sessionId`: StrangeUp UUID — use for poll/cancel only; **not** the Veriff session id.
+   - `expiresAt`: StrangeUp session TTL (server-side); cancel via `POST /v1/me/verification/sessions/:sessionId/cancel` if the user abandons the flow.
+4. **During flow:** Do **not** upload ID/selfie to StrangeUp. Do **not** call Veriff APIs from the app. Do **not** set local “verified” UI from SDK callbacks alone.
+5. **Poll status:** `GET /v1/me/verification/sessions/:sessionId` and/or `GET /v1/me/verification/status` / `GET /v1/me/onboarding/status` until `status` is terminal (`APPROVED`, `DECLINED`, `EXPIRED`, `ABANDONED`, `CANCELLED`) or user cancels.
+6. **Authority:** `User.identityVerificationStatus === "APPROVED"` is set **only** after the backend validates a signed Veriff **decision webhook**. SDK “success” is **not** approval. Admin review (`adminReviewStatus`) may still be `PENDING` after provider approval.
+7. **Errors:** `503 SERVICE_UNAVAILABLE` when provider disabled or sandbox not activated; `409 CONFLICT` when an active session exists or KYC already approved; `403 AUTH_FORBIDDEN` when not eligible. Retry start only after cancel or terminal session — never bypass with client-side approval.
+8. **Secrets:** Never ship `VERIFF_API_KEY` or `VERIFF_SHARED_SECRET` in the mobile app; only the backend calls `POST /v1/sessions`.
+
+**Pending Flutter responsibilities (Veriff path):**
 
 | Area | Responsibility |
 |---|---|
-| Entry | Call StrangeUp to start session; receive **opaque** session URL / SDK params — never provider secret |
-| Flow | Hosted redirect **or** in-app SDK (Stripe / Persona / Veriff — vendor-dependent) |
-| Completion | **Do not** set `APPROVED` locally; poll `GET /v1/me/account` or session status when LIVE |
-| Denial UX | Map future `IDENTITY_VERIFICATION_*` codes at join/RSVP/publish/check-in — codes **PROPOSED**, not LIVE |
+| Entry | `POST /v1/me/verification/sessions` → use returned `redirectUrl` / `sdkToken` only |
+| Flow | In-app **Veriff SDK** with session URL from StrangeUp (no direct Veriff REST from Flutter) |
+| Completion | Poll StrangeUp session/onboarding status; treat provider + admin gates separately |
+| Denial UX | Map `IDENTITY_VERIFICATION_*` / onboarding `nextAction` on gated actions |
 | Waitlist | Allow waitlist UI; block promotion UX until server allows |
 | Virtual | Skip KYC-01 prompts only when server marks activity **100% virtual-only** |
-| Cancel/errors | Handle user cancel and provider unavailable without fake success |
+| Cancel/errors | Call cancel endpoint; on `503`, show retry-later — no fake success |
 | Copy | KYC-07 **OPEN** — no final strings in this doc |
+
+### Manual KYC camera upload handoff (Tasks 031I-M3 / 031I-M4 — owner MVP)
+
+Use **only** when `GET /v1/me/verification/status` indicates manual authority is active (`KYC_IDENTITY_AUTHORITY=manual` on server — mutually exclusive with Veriff provider sessions). **Do not** change or delete Veriff integration; when provider mode is enabled, ignore this subsection.
+
+1. **Precheck:** Same eligibility as provider start (`canStartVerification: true`, account `ACTIVE`, age eligible, not revoked, no terminal approved identity). **409** if another active manual session exists.
+2. **Declare document type:** `POST /v1/me/verification/manual/sessions` with JSON body, e.g.:
+   ```json
+   { "idDocumentType": "DRIVERS_LICENSE", "documentHasRearSide": true }
+   ```
+   **`ManualIdDocumentType` values:** `PASSPORT`, `NATIONAL_ID`, `DRIVERS_LICENSE`, `STATE_ID`, `OTHER_ONE_SIDED`, `OTHER_TWO_SIDED`.
+   - **`documentHasRearSide` (boolean, required)** for `DRIVERS_LICENSE`, `STATE_ID`, `NATIONAL_ID` — applicant declares whether the physical ID has a readable rear side.
+   - **Do not send** `documentHasRearSide` for `PASSPORT`, `OTHER_ONE_SIDED`, or `OTHER_TWO_SIDED`.
+3. **201 `data` highlights:** `sessionId`, `expiresAt`, `clientAction: "MANUAL_EVIDENCE_UPLOAD"`, `idDocumentType`, `idDocumentTypeLabel`, `documentHasRearSide`, `idDocumentBackRequired`, `requiredEvidenceKinds` (ordered: front, optional back, selfie).
+4. **Required evidence (server-enforced):**
+   | Document type | Required uploads |
+   |---|---|
+   | `OTHER_TWO_SIDED` | `ID_DOCUMENT` + `ID_DOCUMENT_BACK` + `SELFIE` |
+   | `PASSPORT`, `OTHER_ONE_SIDED` | `ID_DOCUMENT` + `SELFIE` only |
+   | `DRIVERS_LICENSE`, `STATE_ID`, `NATIONAL_ID` | If `documentHasRearSide: true` → front + back + selfie; if `false` → front + selfie only. Use `OTHER_ONE_SIDED` when the ID is genuinely one-sided. |
+5. **Upload (camera capture only — product expectation):** For each required kind, `POST /v1/me/verification/manual/sessions/:sessionId/evidence` as **`multipart/form-data`**:
+   - Field **`evidence`**: image file (`image/jpeg`, `image/png`, or `image/webp`).
+   - Field **`kind`**: `ID_DOCUMENT` | `ID_DOCUMENT_BACK` | `SELFIE`.
+   - Re-uploading the same `kind` **replaces** the prior file (server deletes old Cloudinary object).
+   - **400** if `ID_DOCUMENT_BACK` is sent for a one-sided document type.
+   - **409** if session expired, not bound to the user, not accepting uploads (`IN_REVIEW` / terminal), or identity revoked.
+6. **Poll progress:** `GET /v1/me/verification/manual/sessions/:sessionId` returns `uploadedEvidence[]`, `missingEvidenceKinds`, `evidenceComplete`, and session `status`. When all required kinds are present, server moves session to **`IN_REVIEW`** (staff queue).
+7. **Cancel:** `POST /v1/me/verification/manual/sessions/:sessionId/cancel` while `PENDING_USER` or `RESUBMISSION_REQUESTED`.
+8. **Resubmission after staff reject:** Identity `DECLINED` clears the session binding — call **`POST …/manual/sessions`** again with a fresh `idDocumentType` (new session). Do not reuse stale `sessionId` from local storage after terminal outcomes.
+9. **Authority / Home access:** Upload completion and `IN_REVIEW` **do not** set `identityVerificationStatus` to `APPROVED`. Staff **Step A** (`manual-identity-decision`) then admin **Step B** (platform activation) match provider path gating — poll `GET /v1/me/onboarding/status` and `GET /v1/me/verification/status`.
+10. **Security:** Responses never include Cloudinary URLs. Do not cache evidence URLs on device beyond the upload buffer; no public image links.
 
 | Topic | Guidance |
 |---|---|

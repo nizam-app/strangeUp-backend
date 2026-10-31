@@ -62,9 +62,9 @@ describe("social policy", () => {
     expect(canInitiateSocialContact(activated, activatedOther, "VERIFIED_USERS_ONLY", false)).toBe(
       true,
     );
-    expect(canInitiateSocialContact(kycApproved, activatedOther, "VERIFIED_USERS_ONLY", false)).toBe(
-      false,
-    );
+    expect(
+      canInitiateSocialContact(kycApproved, activatedOther, "VERIFIED_USERS_ONLY", false),
+    ).toBe(false);
     expect(canInitiateSocialContact(eligible, other, "EVERYONE", true)).toBe(false);
     expect(canInitiateSocialContact(eligible, eligible, "EVERYONE", false)).toBe(false);
   });

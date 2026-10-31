@@ -138,10 +138,7 @@ export function createApp(deps: CreateAppDeps): express.Application {
     mountMainApp("/v1/store", createStoreRouter({ db, authService, env }));
     mountMainApp("/v1/jobs", createJobsRouter({ db, authService, env }));
     mountMainApp("/v1/membership", createMembershipRouter({ db, authService, env }));
-    mountMainApp(
-      "/v1/meetup-invites",
-      createMeetupInvitesRouter({ db, authService, env }),
-    );
+    mountMainApp("/v1/meetup-invites", createMeetupInvitesRouter({ db, authService, env }));
     app.use("/v1/admin", createAdminRouter({ db, authService, env }));
   }
 

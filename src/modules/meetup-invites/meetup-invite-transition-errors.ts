@@ -9,9 +9,7 @@ export const MEETUP_INVITE_NOT_ACTIONABLE_MESSAGE = "Meetup invitation is not ac
 export const MEETUP_INVITE_PARTICIPANTS_INELIGIBLE_MESSAGE =
   "Meetup invitation can no longer be completed";
 
-export function meetupInviteTransitionError(
-  reason: MeetupInviteTransitionRejectReason,
-): AppError {
+export function meetupInviteTransitionError(reason: MeetupInviteTransitionRejectReason): AppError {
   switch (reason) {
     case "wrong_actor":
       return new AppError("AUTH_FORBIDDEN", MEETUP_INVITE_MUTATION_FORBIDDEN_MESSAGE, 403);

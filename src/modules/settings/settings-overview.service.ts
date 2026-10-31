@@ -7,23 +7,19 @@ import { resolveLegalNameLocked } from "../me/profile-identity-policy.js";
 import { SavedActivityService } from "../saved-activities/saved-activity.service.js";
 import { buildSettingsMembershipSummary } from "../membership/membership-entitlements.js";
 import { buildSettingsCapabilities } from "./settings-capabilities.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
+import type { KycEnforcementContext } from "../verification/kyc-trust.js";
 
 export class SettingsOverviewService {
   private readonly savedActivities: SavedActivityService;
-  private readonly kyc: { isProduction: boolean; kycProviderEnabled: boolean };
+  private readonly kyc: KycEnforcementContext;
 
   constructor(
     private readonly db: DatabaseClient,
     env: AppEnv,
   ) {
-    this.savedActivities = new SavedActivityService(db, {
-      isProduction: env.isProduction,
-      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
-    });
-    this.kyc = {
-      isProduction: env.isProduction,
-      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
-    };
+    this.kyc = buildKycEnforcementContext(env);
+    this.savedActivities = new SavedActivityService(db, this.kyc);
   }
 
   async getOverview(user: User) {

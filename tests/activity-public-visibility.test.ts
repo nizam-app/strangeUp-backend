@@ -5,7 +5,7 @@ import {
   isPublicActivityDiscoverableToNonHostViewer,
 } from "../src/modules/activities/activity-public-visibility.js";
 
-const kycDev = { isProduction: false, kycProviderEnabled: false };
+const kycDev = { isProduction: false, kycProviderEnabled: false, kycManualReviewEnabled: false };
 
 const activeHost = {
   id: "host-1",

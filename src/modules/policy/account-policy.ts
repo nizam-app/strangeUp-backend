@@ -44,14 +44,14 @@ export function canEditProfile(actor: PolicyActor | null, userId: string): boole
   if (actor!.accountStatus === "SUSPENDED" || actor!.suspendedAt !== null) {
     return false;
   }
-  return actor!.emailVerifiedAt !== null && actor!.ageEligibilityStatus === "ELIGIBLE";
+  return actor!.accountStatus === "ACTIVE" && actor!.ageEligibilityStatus === "ELIGIBLE";
 }
 
 export function canStartVerification(actor: PolicyActor | null, userId: string): boolean {
   if (!canAccessAccount(actor, userId)) {
     return false;
   }
-  return actor!.emailVerifiedAt !== null && actor!.ageEligibilityStatus === "ELIGIBLE";
+  return actor!.accountStatus === "ACTIVE" && actor!.ageEligibilityStatus === "ELIGIBLE";
 }
 
 export function canAccessOwnVerificationStatus(actor: PolicyActor | null, userId: string): boolean {
@@ -67,9 +67,6 @@ export function canInteractWithUser(_actor: PolicyActor | null, _targetUserId: s
 }
 
 /** Main product / Home gate (provider KYC + StrangeUp admin approval + account eligibility). */
-export function hasFullAccountAccess(
-  actor: PolicyActor,
-  kycCtx?: KycEnforcementContext,
-): boolean {
+export function hasFullAccountAccess(actor: PolicyActor, kycCtx?: KycEnforcementContext): boolean {
   return hasHomeAccessFromActivation(actor, kycCtx);
 }

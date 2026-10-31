@@ -3,10 +3,7 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
 import { hasFullAccountAccess, toPolicyActor } from "../policy/account-policy.js";
-import {
-  canViewPublicProfile,
-  toDiscoverUserSnapshot,
-} from "../policy/public-profile-policy.js";
+import { canViewPublicProfile, toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { toPublicProfilePreview } from "../discovery/public-profile.dto.js";
 import { decodeActivityStartsCursor, encodeActivityStartsCursor } from "./activity-cursor.js";
 import { activityForbidden, activityNotFound } from "./activity-errors.js";
@@ -122,12 +119,7 @@ export class ActivityHostJoinRequestsService {
       const profile = row.user.profile;
       const applicantSnapshot = toDiscoverUserSnapshot(row.user);
       const visible = profile
-        ? canViewPublicProfile(
-            hostSnapshot,
-            applicantSnapshot,
-            profile.profileVisibility,
-            blocked,
-          )
+        ? canViewPublicProfile(hostSnapshot, applicantSnapshot, profile.profileVisibility, blocked)
         : false;
       const participation = toMyParticipationDto(row, activity.joinMode);
       if (!participation) {
@@ -283,11 +275,7 @@ export class ActivityHostJoinRequestsService {
       }
 
       if (!activity.waitlistEnabled) {
-        throw new AppError(
-          "CONFLICT",
-          "Activity is at capacity and waitlisting is disabled",
-          409,
-        );
+        throw new AppError("CONFLICT", "Activity is at capacity and waitlisting is disabled", 409);
       }
 
       const last = await tx.activityParticipation.findFirst({

@@ -32,7 +32,9 @@ import type { MyActivityInventoryQuery } from "./activity.validation.js";
 
 const INVENTORY_FETCH_CAP = 200;
 
-type HostInventoryRecord = Awaited<ReturnType<ActivityMyInventoryService["loadHostRecords"]>>[number];
+type HostInventoryRecord = Awaited<
+  ReturnType<ActivityMyInventoryService["loadHostRecords"]>
+>[number];
 type ParticipantInventoryRecord = Awaited<
   ReturnType<ActivityMyInventoryService["loadParticipantRecords"]>
 >[number];
@@ -92,7 +94,14 @@ export class ActivityMyInventoryService {
           this.loadHostRecords(viewer.id, "upcoming", now),
           this.loadParticipantRecords(viewer.id, "CONFIRMED", "upcoming", now),
         ]);
-        return this.pageMixed(viewer, hostRecords, joinedRecords, limit, cursor, compareInventoryAsc);
+        return this.pageMixed(
+          viewer,
+          hostRecords,
+          joinedRecords,
+          limit,
+          cursor,
+          compareInventoryAsc,
+        );
       }
       case "past": {
         const [hostRecords, participantRecords] = await Promise.all([
@@ -146,9 +155,7 @@ export class ActivityMyInventoryService {
     now: Date,
   ) {
     const stateFilter: { in: ActivityParticipationState[] } | ActivityParticipationState =
-      participation === "both"
-        ? { in: ["CONFIRMED", "WAITLISTED"] }
-        : participation;
+      participation === "both" ? { in: ["CONFIRMED", "WAITLISTED"] } : participation;
 
     return this.db.activityParticipation.findMany({
       where: {
@@ -187,11 +194,7 @@ export class ActivityMyInventoryService {
     );
     const afterCursor = cursor
       ? sorted.filter((row) =>
-          rowAfterCursor(
-            { activityId: row.activityId, startsAt: row.startsAt },
-            cursor,
-            ascending,
-          ),
+          rowAfterCursor({ activityId: row.activityId, startsAt: row.startsAt }, cursor, ascending),
         )
       : sorted;
     const page = afterCursor.slice(0, limit + 1);
@@ -211,7 +214,10 @@ export class ActivityMyInventoryService {
       record: row,
     }));
     const { slice, hasMore } = this.sliceInventory(normalized, limit, cursor, compare, true);
-    const items = this.toHostItems(viewer, slice.map((entry) => entry.record));
+    const items = this.toHostItems(
+      viewer,
+      slice.map((entry) => entry.record),
+    );
     return { items, hasMore };
   }
 
@@ -228,7 +234,10 @@ export class ActivityMyInventoryService {
       record: row,
     }));
     const { slice, hasMore } = this.sliceInventory(normalized, limit, cursor, compare, true);
-    const items = await this.toParticipantItems(viewer, slice.map((entry) => entry.record));
+    const items = await this.toParticipantItems(
+      viewer,
+      slice.map((entry) => entry.record),
+    );
     return { items, hasMore };
   }
 
@@ -275,13 +284,7 @@ export class ActivityMyInventoryService {
       });
     }
 
-    const { slice, hasMore } = this.sliceInventory(
-      slots,
-      limit,
-      cursor,
-      compare,
-      ascending,
-    );
+    const { slice, hasMore } = this.sliceInventory(slots, limit, cursor, compare, ascending);
     const items: MyActivityInventoryItemDto[] = [];
     for (const slot of slice) {
       if (slot.kind === "host" && slot.host) {
@@ -314,10 +317,7 @@ export class ActivityMyInventoryService {
     const viewerSnapshot = toDiscoverUserSnapshot(viewer);
     const items: MyActivityInventoryItemDto[] = [];
     for (const participation of rows) {
-      const myParticipation = toMyParticipationDto(
-        participation,
-        participation.activity.joinMode,
-      );
+      const myParticipation = toMyParticipationDto(participation, participation.activity.joinMode);
       if (!myParticipation) {
         continue;
       }

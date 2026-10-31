@@ -20,6 +20,16 @@ describe("effective access policy (Task 022A)", () => {
     expect(computeEffectiveApplicationAccess({ actor })).toBe("WAITING_FOR_ADMIN_REVIEW");
   });
 
+  it("grants Home without email verification when KYC and admin approval align", () => {
+    expect(
+      hasHomeAccess(
+        mainAppActivatedActor({
+          emailVerifiedAt: null,
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("grants Home only when admin approval matches current identity session", () => {
     expect(hasHomeAccess(mainAppActivatedActor())).toBe(true);
     expect(
@@ -58,20 +68,17 @@ describe("effective access policy (Task 022A)", () => {
     ).toBe("ADMIN_REJECTED");
   });
 
-  it("maps onboarding next actions for email and IDV steps", () => {
-    const pendingEmail = baseEligibleActor({
-      accountStatus: "PENDING_VERIFICATION",
-      emailVerifiedAt: null,
-    });
+  it("maps onboarding next actions for IDV without mandatory email verification", () => {
+    const readyForIdvUnverifiedEmail = baseEligibleActor({ emailVerifiedAt: null });
     expect(
       resolveOnboardingNextAction({
-        actor: pendingEmail,
+        actor: readyForIdvUnverifiedEmail,
         effectiveAccess: "ONBOARDING_REQUIRED",
-        canStartVerification: false,
+        canStartVerification: true,
         canRetryVerification: false,
         emailVerificationStatus: "UNVERIFIED",
       }),
-    ).toBe("VERIFY_EMAIL");
+    ).toBe("START_IDENTITY_VERIFICATION");
 
     const readyForIdv = baseEligibleActor();
     expect(

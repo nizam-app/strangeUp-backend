@@ -11,8 +11,12 @@ import {
   resolveJoinPath,
 } from "../src/modules/activities/activity-policy.js";
 
-const kycDev = { isProduction: false, kycProviderEnabled: false };
-const kycProdClosed = { isProduction: true, kycProviderEnabled: false };
+const kycDev = { isProduction: false, kycProviderEnabled: false, kycManualReviewEnabled: false };
+const kycProdClosed = {
+  isProduction: true,
+  kycProviderEnabled: false,
+  kycManualReviewEnabled: false,
+};
 
 function kycTrust(status: IdentityVerificationStatus) {
   return {

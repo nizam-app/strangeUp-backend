@@ -66,7 +66,9 @@ export class DeviceTokenService {
     }
 
     if (existingByToken && existingByToken.userId !== viewer.id) {
-      await this.db.userDeviceToken.delete({ where: { id: existingByToken.id } }).catch(() => undefined);
+      await this.db.userDeviceToken
+        .delete({ where: { id: existingByToken.id } })
+        .catch(() => undefined);
     }
 
     const row = existingByBinding

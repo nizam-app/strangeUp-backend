@@ -1,11 +1,7 @@
 import type { AvatarStoredContentType } from "../../modules/profile-media/avatar.constants.js";
 
 export type MediaStorageNamespace =
-  | "profile"
-  | "activity-cover"
-  | "group-cover"
-  | "group-content"
-  | "store-product";
+  "profile" | "activity-cover" | "group-cover" | "group-content" | "store-product";
 
 export type PutMediaObjectInput = {
   /** Logical storage key persisted in the database (never from client input). */

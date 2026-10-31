@@ -21,11 +21,7 @@ function futureWindow(hoursFromNow: number): { startsAt: string; endsAt: string 
   return { startsAt: starts.toISOString(), endsAt: ends.toISOString() };
 }
 
-async function publishActivity(
-  app: ReturnType<typeof createApp>,
-  hostToken: string,
-  capacity = 8,
-) {
+async function publishActivity(app: ReturnType<typeof createApp>, hostToken: string, capacity = 8) {
   const schedule = futureWindow(50);
   const draft = await request(app)
     .post("/v1/me/activities")

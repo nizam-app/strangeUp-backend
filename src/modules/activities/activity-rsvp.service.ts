@@ -12,10 +12,7 @@ import {
   hostPreviewForViewer,
   toPublicActivitySource,
 } from "./activity-mapper.js";
-import {
-  canApplicantSubmitJoinRequest,
-  isWaitlistFifoEligible,
-} from "./activity-join-policy.js";
+import { canApplicantSubmitJoinRequest, isWaitlistFifoEligible } from "./activity-join-policy.js";
 import {
   canBrowseActivities,
   decideWaitlistPromotion,

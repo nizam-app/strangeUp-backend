@@ -22,7 +22,7 @@ describe("activity host eligibility (Task 025C)", () => {
           adminReviewStatus: activated.adminReviewStatus,
           adminReviewVerificationSessionId: activated.adminReviewVerificationSessionId,
         },
-        { isProduction: false, kycProviderEnabled: false },
+        { isProduction: false, kycProviderEnabled: false, kycManualReviewEnabled: false },
       ),
     ).toBe(true);
 
@@ -43,7 +43,7 @@ describe("activity host eligibility (Task 025C)", () => {
           adminReviewStatus: "NOT_READY",
           adminReviewVerificationSessionId: null,
         },
-        { isProduction: false, kycProviderEnabled: false },
+        { isProduction: false, kycProviderEnabled: false, kycManualReviewEnabled: false },
       ),
     ).toBe(false);
   });

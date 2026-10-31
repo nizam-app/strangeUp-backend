@@ -1,9 +1,5 @@
 import type { Server } from "socket.io";
-import {
-  dmRoom,
-  groupRoom,
-  userRoom,
-} from "./messaging-realtime.constants.js";
+import { dmRoom, groupRoom, userRoom } from "./messaging-realtime.constants.js";
 import type { MessagingSocketData } from "./messaging-realtime.types.js";
 
 let ioRef: Server | null = null;
@@ -78,7 +74,9 @@ export async function evictUsersFromSharedDirectConversations(
   const low = userAId < userBId ? userAId : userBId;
   const high = userAId < userBId ? userBId : userAId;
   const conversation = await db.directConversation.findUnique({
-    where: { participantLowId_participantHighId: { participantLowId: low, participantHighId: high } },
+    where: {
+      participantLowId_participantHighId: { participantLowId: low, participantHighId: high },
+    },
     select: { id: true },
   });
   if (!conversation) {

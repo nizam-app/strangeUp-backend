@@ -123,6 +123,8 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 
 **Validation:** email format; password ≥8 with letter + number; `dateOfBirth` as `YYYY-MM-DD` (UTC calendar, leap-day safe); **not in the future**; **USA launch 18+**; all three consent types required. Each consent `version` must match the server canonical registry (`GET /v1/consents/required`). **`CONSENT_ENFORCEMENT=strict`** (production default) rejects registration until counsel publishes **ACTIVE** version IDs; dev/test may use **`placeholder_allowed`** for engineering placeholders only.
 
+**Email (Task 031B.2):** Registration does **not** send a mandatory verification email. **`emailVerificationRequired`** is **`false`**. Eligible registrants receive **`accountStatus: ACTIVE`** with **`emailVerifiedAt` null**. Optional verify: `POST /v1/auth/email-verification/request` + confirm.
+
 **Password storage:** scrypt with per-hash stored `N/r/p`; new credentials use **N=16384, r=8, p=5**. Older **p=1** hashes remain valid; successful **login** transparently rehashes to the preferred cost (no API shape change).
 
 **Response 201:**
@@ -131,8 +133,8 @@ Requires `DATABASE_URL` and auth env (`JWT_ACCESS_SECRET`, etc.). Routes are **n
 {
   "data": {
     "userId": "uuid",
-    "accountStatus": "PENDING_VERIFICATION",
-    "emailVerificationRequired": true
+    "accountStatus": "ACTIVE",
+    "emailVerificationRequired": false
   },
   "meta": { "requestId": "..." }
 }
@@ -1046,9 +1048,19 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 | `POST` | `/v1/me/verification/sessions` | Bearer | Start provider session (requires `KYC_PROVIDER_ENABLED=true` and configured adapter) |
 | `GET` | `/v1/me/verification/sessions/:sessionId` | Bearer | Session owner read (no PII payloads) |
 | `POST` | `/v1/me/verification/sessions/:sessionId/cancel` | Bearer | Cancel active session |
-| `POST` | `/v1/webhooks/verification/:provider` | HMAC (`x-hmac-signature`, raw body) | Provider decision webhook (`mock` for integration; `veriff` **BLOCKED BY OWNER**) |
+| `POST` | `/v1/me/verification/manual/sessions` | Bearer | Start **manual** session — body `{ "idDocumentType": "<ManualIdDocumentType>", "documentHasRearSide"?: boolean }` (`documentHasRearSide` **required** for `DRIVERS_LICENSE` / `STATE_ID` / `NATIONAL_ID`; forbidden for other types) |
+| `GET` | `/v1/me/verification/manual/sessions/:sessionId` | Bearer | Manual session status — uploaded/missing evidence kinds, `evidenceComplete`, expiry |
+| `POST` | `/v1/me/verification/manual/sessions/:sessionId/cancel` | Bearer | Cancel active manual session (`PENDING_USER` / `RESUBMISSION_REQUESTED` only) |
+| `POST` | `/v1/me/verification/manual/sessions/:sessionId/evidence` | Bearer + multipart `evidence` | Upload manual evidence — form field `kind`: `ID_DOCUMENT` \| `ID_DOCUMENT_BACK` \| `SELFIE` (back only when document type requires it); replaces prior file for same kind |
+| `POST` | `/v1/webhooks/verification/:provider` | HMAC (`x-hmac-signature` or `vrf-hmac-signature`, raw body) + Veriff `x-auth-client` | Provider decision webhook (`mock` integration; `veriff` sandbox when activated) |
 
-**Runtime:** Default `KYC_PROVIDER_ENABLED=false` → `FEATURE_DISABLED`. **`KYC_PROVIDER=mock`** + secret enables integration-style sessions; **`veriff`** session creation and webhooks remain blocked until **KYC-02** owner approval and `VERIFF_LIVE_CALLS_ENABLED=true` (forbidden in production startup). **`User.identityVerificationStatus`** changes only via validated webhooks — never client-writable. Trusted KYC for activities also requires non-revoked, non-expired approval metadata (`identityVerificationValidUntil`, `identityVerificationRevokedAt`).
+**Runtime:** Default `KYC_IDENTITY_AUTHORITY=none` and `KYC_PROVIDER_ENABLED=false` → provider path disabled. **`KYC_IDENTITY_AUTHORITY=manual`** (requires Cloudinary server creds; mutually exclusive with `KYC_PROVIDER_ENABLED=true`) enables manual session/evidence APIs; identity decisions use staff `manual-identity-decision`, **not** Veriff webhooks. See `docs/operations/MANUAL_KYC_CLOUDINARY_EVIDENCE.md`.
+
+**Runtime (provider path):** Default `KYC_PROVIDER_ENABLED=false` → `FEATURE_DISABLED`. **`KYC_PROVIDER=mock`** + `KYC_MOCK_WEBHOOK_HMAC_SECRET` enables local/integration sessions. **`KYC_PROVIDER=veriff`** implements `POST /v1/sessions` + decision webhooks but stays **`VERIFF_BLOCKED_BY_OWNER`** until `VERIFF_API_KEY`, `VERIFF_SHARED_SECRET`, allowlisted `VERIFF_API_BASE_URL` (`https://stationapi.veriff.com` or `.veriff.me`), and **`VERIFF_LIVE_CALLS_ENABLED=true`** (still **forbidden** in production startup). Session start returns `sdkToken` + `redirectUrl` only — never shared secret. **`User.identityVerificationStatus`** changes only via validated webhooks — never client-writable. Stale/revoked sessions cannot re-approve a superseded identity. Trusted KYC for activities also requires non-revoked, non-expired approval metadata (`identityVerificationValidUntil`, `identityVerificationRevokedAt`).
+
+**Veriff session create (server):** `POST {VERIFF_API_BASE_URL}/v1/sessions` with `X-AUTH-CLIENT`, body `{ "verification": { "endUserId": "<StrangeUp user UUID>" } }` — no outbound HMAC on create per Veriff Public API v1. Maps `verification.id` → `providerSessionRef`, `verification.url` → `redirectUrl`, `verification.sessionToken` → `sdkToken`.
+
+**Veriff decision webhook (minimal parse):** `{ "status": "success", "verification": { "id", "status", "decisionTime?", "endUserId?" } }` — PII fields in payload are **not** persisted (KYC-05). Status mapping: `approved`→`APPROVED`, `declined`→`DECLINED`, `resubmission_requested`→`RESUBMISSION_REQUESTED`, `review`→`IN_REVIEW`, `expired`→`EXPIRED`, `abandoned`→`ABANDONED`.
 
 **Source:** `src/modules/verification/*`, migration `20261027250000_kyc_verification_consent`
 
@@ -1058,22 +1070,99 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 ### Admin identity review (Task 022B — backend only, no Admin UI)
 
-**Auth:** Bearer session + active `PlatformStaffGrant` role `IDENTITY_REVIEWER` (see `docs/operations/PLATFORM_STAFF_PROVISIONING.md`). Never assign via register/login/client flags.
+**Auth:** Bearer session + active `PlatformStaffGrant` role `IDENTITY_REVIEWER` or owner-facing **`SUPER_ADMIN`** (see `docs/operations/PLATFORM_STAFF_PROVISIONING.md`). Never assign via register/login/client flags.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/v1/admin/identity-reviews` | Paginated queue (`status=PENDING\|APPROVED\|REJECTED`, `limit`, `cursor`) — minimal DTO, masked email |
-| `GET` | `/v1/admin/identity-reviews/:reviewId` | Detail (`reviewId` = applicant `userId`); session metadata + recent audit decisions — no ID/selfie payloads |
+| `GET` | `/v1/admin/identity-reviews/summary` | **Global** totals (`scope: GLOBAL_STATUS_TOTALS`): `pendingTotal` / compat `pending` = actionable + on-hold; `pendingActionable` (`PENDING`); `pendingOnHold` (`NEEDS_FURTHER_REVIEW`); `approved`; `rejected` — queue criteria match list PENDING tab; **not** narrowed by list `q`/date filters. **Requires migration `20261030150000_task031f1_internal_review_hold_notes`.** |
+| `GET` | `/v1/admin/identity-reviews` | Paginated queue (`status`, `limit`, `cursor`, optional `posture` when `status=PENDING`: `all`\|`actionable`\|`on_hold`, optional `q`, `submittedFrom`, `submittedTo`, `identityVerificationStatus`). **`status=PENDING` default `posture=all`** includes `PENDING` + `NEEDS_FURTHER_REVIEW` (use `actionable` for pre-031F-1 PENDING-only rows). Search/dates/cursor unchanged from 031E-1. |
+| `POST` | `/v1/admin/identity-reviews/:reviewId/needs-further-review` | Internal hold → `NEEDS_FURTHER_REVIEW` from `PENDING` only; optional `optionalNote`; `Idempotency-Key`; decision audit row; **no** applicant notification. |
+| `POST` | `/v1/admin/identity-reviews/:reviewId/return-to-pending` | Hold → `PENDING`; optional note; idempotency; audit with `reasonCode` `RETURNED_TO_PENDING`. |
+| `GET` | `/v1/admin/identity-reviews/export` | Filtered CSV export (same query filters as list; max **1000** rows/request; `X-Identity-Review-Export-Truncated` when capped). Masked/safe columns only — no full email, DOB, KYC media, tokens, or note bodies. Tab summary counts remain global; export reflects applied filters. |
+| `POST` | `/v1/admin/identity-reviews/batch-decide` | Batch **APPROVE** or **REJECT** for **1–10** unique review IDs (non-atomic). Body: `{ action, reviewIds, batchRequestId, reasonCode? }` — `reasonCode` required for `REJECT`, forbidden for `APPROVE`. Reuses single-review approve/reject services, eligibility, session binding, RBAC, and per-applicant idempotency keys derived from `batchRequestId` + payload fingerprint + `reviewId`. Response includes per-item `outcome` / safe `message`; HTTP **200** when ≥1 success, **422** when all failed; partial success never implied by status alone. **No** batch hold/return/notify. |
+| `GET` | `/v1/admin/identity-reviews/:reviewId/decisions` | Staff-only paginated admin decision audit rows (`limit`, `cursor`); fields include `decisionId`, `status`, `reasonCode`, `verificationSessionId`, `reviewerUserId`, `reviewerDisplayLabel`, `createdAt` — **no** tokens, notes, or KYC payloads. Detail `recentDecisions` (≤10) retained for compatibility. |
+| `GET` | `/v1/admin/identity-reviews/:reviewId/notes` | Staff-only paginated internal notes (`limit`, `cursor`). |
+| `POST` | `/v1/admin/identity-reviews/:reviewId/notes` | Append note (1–2000 chars) on open review (`PENDING` or `NEEDS_FURTHER_REVIEW` only). **Not** on Flutter/public APIs. |
+| `GET` | `/v1/admin/identity-reviews/:reviewId` | Detail (`reviewId` = applicant `userId`); adds `accountCreatedAt`, `profileSummary` (`displayName`, `locationCity`, `locationRegion` only), session metadata, recent decisions — **no** ID/selfie payloads |
+| `GET` | `/v1/admin/identity-reviews/:reviewId/avatar` | Staff-scoped **profile** avatar bytes (`private, no-store`); **404** when none; not KYC evidence |
+| `GET` | `/v1/admin/identity-reviews/:reviewId/manual-evidence` | Manual KYC evidence **metadata** only — includes `manualIdDocumentType`, `requiredEvidenceKinds`, `evidenceComplete`, `missingEvidenceKinds` (Task 031I-M3; no Cloudinary URLs) |
+| `GET` | `/v1/admin/identity-reviews/:reviewId/manual-evidence/:evidenceId` | Staff-proxied evidence bytes (`private, no-store`; Cloudinary authenticated download server-side) |
+| `DELETE` | `/v1/admin/identity-reviews/:reviewId/manual-evidence/:evidenceId` | Destroy Cloudinary object + soft-delete metadata row |
+| `POST` | `/v1/admin/identity-reviews/:reviewId/manual-identity-decision` | Manual **identity** approve/reject (`source: MANUAL_REVIEW`); distinct from Veriff webhooks and from platform `approve` |
 | `POST` | `/v1/admin/identity-reviews/:reviewId/approve` | Approve activation when provider session APPROVED and eligibility gates pass; optional `Idempotency-Key` |
 | `POST` | `/v1/admin/identity-reviews/:reviewId/reject` | Reject with bounded `reasonCode`; optional `Idempotency-Key` |
+
+**`submittedAt` semantics (Task 031C-2):** ISO timestamp of the **current bound** `VerificationSession.completedAt` when present (provider-side completion of the IDV session). Not the same as account creation or admin queue entry; may be `null` if the session is not completed.
 
 **Rules:** Admin approve **never** overrides provider decline/expiry/revocation; self-review forbidden; production rejects mock-provider approvals. Provider `APPROVED` webhook sets admin `PENDING` only.
 
 **Source:** `src/modules/admin/*`, migrations `20261028120000_task022a_admin_review_lifecycle`, `20261028140000_task022b_platform_staff_admin_review`
 
+### Admin users management (Tasks 032A–032E)
+
+**Auth:** Bearer session + active `PlatformStaffGrant` role `IDENTITY_REVIEWER` or `SUPER_ADMIN` for list/detail. **Suspend/Restore require `SUPER_ADMIN`.** Not gated by main-app Home access. Masked contact fields only — no full email, phone, tokens, or KYC media.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/admin/users/summary` | Global non-deleted user totals |
+| `GET` | `/v1/admin/users` | Paginated directory (`q`, `accountStatus`, `identityVerificationStatus`, `adminReviewStatus`, `limit`, `cursor`) |
+| `GET` | `/v1/admin/users/:userId` | User detail + `accountModeration` capabilities (`canSuspend` / `canRestore` / `blockedReason`) |
+| `POST` | `/v1/admin/users/:userId/suspend` | SUPER_ADMIN only. Body `{ confirmation: "SUSPEND", reasonCode, reason, expectedAccountStatus? }`. Optional `Idempotency-Key`. Transactionally sets `SUSPENDED` + `suspendedAt`, revokes sessions and device tokens, writes `AccountModerationDecision`. After commit, `applyAccountRestrictionSideEffects` disconnects active sockets (best-effort; failures are logged and do not roll back the decision). |
+| `POST` | `/v1/admin/users/:userId/restore` | SUPER_ADMIN only. Body `{ confirmation: "RESTORE", reason?, expectedAccountStatus? }`. Restores prior `ACTIVE` or `PENDING_VERIFICATION`. Does **not** resurrect revoked sessions/device tokens or change identity/admin-review fields. |
+
+**Reason codes:** `POLICY_VIOLATION`, `ABUSE`, `FRAUD`, `SAFETY`, `LEGAL_REQUEST`, `OTHER`. Restore records `ACCOUNT_RESTORED`.
+
+**Guards:** 401 unauthenticated; 403 reviewer-only / self-target / active-staff target; 409 stale `expectedAccountStatus`, concurrent conflict, or idempotency-key reuse with a different payload; 400 invalid confirmation/reason/key. Self-target and staff accounts cannot be moderated here.
+
+**Migration:** `20261031120000_task032c_account_moderation_decision` — **applied on Neon `strangeup_test` (27/27)**. **Not** applied on `strangeup_dev` or production. Do not deploy Users Management writers to those catalogs until the owner applies this migration.
+
+**Admin BFF:** `GET/POST /api/users` and `/api/users/:userId/suspend|restore` require session cookie + CSRF on mutations + `Idempotency-Key`.
+
+**Sandbox:** Task 032E verified list/detail, suspend/restore, audit, idempotency, authorization, session/device revocation, Home denial, and immediate socket eviction on isolated API `:3010` / BFF `:3011` / `strangeup_test` only.
+
+### Admin activities directory (Task 033A / 033B / 033D)
+
+**Auth:** Bearer session + active `PlatformStaffGrant` role `IDENTITY_REVIEWER` or `SUPER_ADMIN`. Directory reads are reviewer-or-super-admin. Administrative cancel is `SUPER_ADMIN` only. Not gated by main-app Home access. Omits meeting instructions, virtual meeting details, exact coordinates, and unmasked host/participant contact.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/admin/activities/summary` | Lifecycle totals (`draft`/`published`/`cancelled`/`completed`), published schedule windows (`activeNow`, `upcomingNext14Days`), category catalog, privacy-safe city catalog. Pending-approval and suspended cards are explicitly unavailable. |
+| `GET` | `/v1/admin/activities` | Paginated directory (`q`, `status`, `mode`, `audience`, `category`, `location`, `month=YYYY-MM`, `when`, `limit`, `cursor`) with `totalMatching` |
+| `GET` | `/v1/admin/activities/export` | Privacy-safe CSV of matching directory rows (capped at 1000) |
+| `GET` | `/v1/admin/activities/:activityId` | Detail + confirmed roster (capped) + honest unavailable-field map + actor-scoped `cancellation` capabilities |
+| `GET` | `/v1/admin/activities/:activityId/cover` | Staff cover bytes through the approved media path |
+| `POST` | `/v1/admin/activities/:activityId/cancel` | SUPER_ADMIN administrative cancel. Body: `confirmation=CANCEL`, `reasonCode`, `reason` (8–500), optional `expectedStatus`. Header: `Idempotency-Key`. Reuses host cancel record updates (activity `CANCELLED`, open participations marked `CANCELLED` and retained). No notifications, refunds, or host impersonation. |
+
+**Cancel guards:** 401 unauthenticated; 403 reviewer-only / host cancelling their own activity via admin; 409 already cancelled, completed, stale `expectedStatus`, concurrent conflict, or idempotency-key reuse with a different payload; 400 invalid confirmation/reason/key; 503 if `ActivityModerationDecision` is missing.
+
+**Migration:** `20261031140000_task033d_activity_moderation_decision` — **applied on Neon `strangeup_test` (28/28)**. **Not** applied on `strangeup_dev` or production. The cancel mutation fail-closes without this table so the path is not unaudited.
+
+**Search (`q`):** exact activity ID or host user ID (UUID), host email prefix, or title/host name/category (min 2 chars). **`when`:** `upcoming` / `past` / `active` / `all` against `startsAt`/`endsAt` vs server now. **`location`:** city or region contains. **`month`:** UTC calendar month of `startsAt`. **Attendance:** confirmed / waitlisted / pending-join counts from existing participation rows only. Cover storage keys are never returned.
+
+**Admin BFF:** `GET /api/activities`, `/summary`, `/export`, `/:activityId`, and `/:activityId/cover` require the staff session cookie.
+
+**Sandbox (033C):** `npx tsx scripts/seed-admin-activities-sandbox.ts` seeds task-owned rows on `strangeup_test` only. Cleanup: `--cleanup --dry-run` then `--cleanup --apply`.
+
+**Not implemented:** create, approve, suspend, delete, bulk mutations, precise meetup addresses, maps, GPS verification, pricing, full audit-history UI, safety reports, risk/trust scores, host/participant notifications, refunds.
+
+### Admin dashboard (Task 035A)
+
+**Auth:** Bearer session + active `PlatformStaffGrant` role `IDENTITY_REVIEWER` or `SUPER_ADMIN`. Read-only aggregations. UTC calendar windows. Does not leak government ID, selfie, DOB, full email/phone, payment details, storage keys, or tokens.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/v1/admin/dashboard/overview` | KPI snapshot (`range=last_30_days\|last_90_days\|last_12_months\|all_time`). Real totals for users, active *accounts* (not DAU/MAU), identity-approved vs Home-access approved, activities, and actionable identity reviews. Premium and revenue return explicit `available: false`. |
+| `GET` | `/v1/admin/dashboard/growth` | UTC-bucketed signup period counts plus cumulative registered-user series. Active-user/retention series is unavailable (`BE-063`). All-time history is capped at 36 months. |
+| `GET` | `/v1/admin/dashboard/activity-categories` | Real `ActivityCategory` catalog ranked by activity share (optional `limit`, default 4). Supporting text is confirmed RSVP counts, not fabricated attendance or YoY. |
+| `GET` | `/v1/admin/dashboard/verification-queue` | Recent actionable identity reviews (Step A manual vs Step B platform labels). No approve/reject mutations. |
+| `GET` | `/v1/admin/dashboard/recent-events` | Newest-first durable audit rows: `IdentityAdminReviewDecision`, `AccountModerationDecision`, `ActivityModerationDecision`. `category=groups\|reports\|transactions` returns `available: false`. |
+| `GET` | `/v1/admin/dashboard/export` | Privacy-safe metrics CSV for the selected range (definitions + unavailable reasons). |
+
+**Admin BFF:** `GET /api/dashboard/overview|growth|activity-categories|verification-queue|recent-events|export` require the staff session cookie.
+
 ### Store catalog management (Task 024B — staff only)
 
-**Auth:** Bearer + active `PlatformStaffGrant` role **`STORE_CATALOG_MANAGER`** (not `IDENTITY_REVIEWER`). **Feature flag:** `STORE_CATALOG_MANAGEMENT_ENABLED=true` required (default **false**; production fail-closed until MKT-01/02). Does **not** use main-app Home gate.
+**Auth:** Bearer + active `PlatformStaffGrant` role **`STORE_CATALOG_MANAGER`** or **`SUPER_ADMIN`**. **Feature flag:** `STORE_CATALOG_MANAGEMENT_ENABLED=true` required (default **false**; production fail-closed until MKT-01/02). Does **not** use main-app Home gate.
 
 | Method | Path | Description |
 |---|---|---|
@@ -1101,7 +1190,7 @@ Same authorization as profile GET; sanitized bytes; `Cache-Control: private, no-
 
 ### Main-app access enforcement (Task 022C)
 
-**Policy:** `hasHomeAccess` = email verified + age eligible + ACTIVE + trusted provider KYC + admin `APPROVED` tied to the same `identityVerificationSessionId`. Enforced at HTTP layer via DB reload (`createRequireHomeAccessMiddleware`) so JWT/session snapshots cannot bypass revoked or pending DB state.
+**Policy (ADR-005 + 2026-10-30 amendment):** `hasHomeAccess` = age eligible + `ACTIVE` + trusted provider KYC + admin `APPROVED` tied to the same `identityVerificationSessionId`. Email verification is **not** required for Home; `emailVerifiedAt` is optional ownership metadata. Enforced at HTTP layer via DB reload (`createRequireHomeAccessMiddleware`) so JWT/session snapshots cannot bypass revoked or pending DB state.
 
 **Gated mounts (`app.ts`):** `/v1/discover`, `/v1/users`, `/v1/activity-categories`, `/v1/activities`, `/v1/group-categories`, `/v1/groups`, `/v1/home`, `/v1/store`, `/v1/jobs`, `/v1/membership`.
 

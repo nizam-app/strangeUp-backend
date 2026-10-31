@@ -80,6 +80,20 @@ const envSchema = z
       .enum(["true", "false"])
       .default("false")
       .transform((v) => v === "true"),
+    /** Task 031I-M1 — explicit identity authority (manual MVP vs provider); default none. */
+    KYC_IDENTITY_AUTHORITY: z.enum(["none", "provider", "manual"]).default("none"),
+    /** When authority=manual, enables trusted manual identity decisions outside production fail-closed. */
+    KYC_MANUAL_REVIEW_ENABLED: z
+      .enum(["true", "false"])
+      .default("false")
+      .transform((v) => v === "true"),
+    KYC_MANUAL_EVIDENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(3650).default(90),
+    CLOUDINARY_CLOUD_NAME: z.string().min(1).optional(),
+    CLOUDINARY_API_KEY: z.string().min(1).optional(),
+    /** Cloudinary dashboard secrets are often shorter than 32 chars; non-empty is enforced in manual authority refine. */
+    CLOUDINARY_API_SECRET: z.string().min(1).optional(),
+    CLOUDINARY_KYC_EVIDENCE_FOLDER: z.string().min(1).default("strangeup/kyc-evidence"),
+    CLOUDINARY_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
     CONSENT_ENFORCEMENT: z.enum(["strict", "placeholder_allowed"]).optional(),
     SOCIAL_RATE_LIMIT_FOLLOW_PER_USER: z.coerce.number().int().min(1).max(1000).default(20),
     SOCIAL_RATE_LIMIT_WAVE_PER_USER: z.coerce.number().int().min(1).max(1000).default(10),
@@ -109,6 +123,8 @@ const envSchema = z
       .default(2_000),
     RESEND_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(10_000),
     RESEND_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
+    /** Comma-separated user UUIDs granted SUPER_ADMIN (non-production bootstrap only). */
+    PLATFORM_SUPER_ADMIN_USER_IDS: z.string().optional(),
     /** Comma-separated user UUIDs granted IDENTITY_REVIEWER (non-production bootstrap only). */
     PLATFORM_IDENTITY_REVIEWER_USER_IDS: z.string().optional(),
     /** Task 024B — staff catalog CRUD/media ingest (default off; production fail-closed until MKT-01/02). */
@@ -161,6 +177,38 @@ const envSchema = z
     FIREBASE_CREDENTIALS_FILE: z.string().min(1).optional(),
     FIREBASE_PROJECT_ID: z.string().min(1).optional(),
   })
+  .superRefine((data, ctx) => {
+    if (data.KYC_IDENTITY_AUTHORITY === "provider" && !data.KYC_PROVIDER_ENABLED) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "KYC_IDENTITY_AUTHORITY=provider requires KYC_PROVIDER_ENABLED=true and a configured adapter",
+        path: ["KYC_IDENTITY_AUTHORITY"],
+      });
+    }
+    if (data.KYC_IDENTITY_AUTHORITY === "manual" && data.KYC_PROVIDER_ENABLED) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "KYC_IDENTITY_AUTHORITY=manual requires KYC_PROVIDER_ENABLED=false (distinct authority paths)",
+        path: ["KYC_IDENTITY_AUTHORITY"],
+      });
+    }
+    if (data.KYC_IDENTITY_AUTHORITY === "manual") {
+      const hasCloudinary =
+        Boolean(data.CLOUDINARY_CLOUD_NAME?.trim()) &&
+        Boolean(data.CLOUDINARY_API_KEY?.trim()) &&
+        Boolean(data.CLOUDINARY_API_SECRET?.trim());
+      if (data.NODE_ENV !== "test" && !hasCloudinary) {
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "KYC_IDENTITY_AUTHORITY=manual requires CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET",
+          path: ["KYC_IDENTITY_AUTHORITY"],
+        });
+      }
+    }
+  })
   .strict();
 
 const KNOWN_ENV_KEYS = [
@@ -209,6 +257,14 @@ const KNOWN_ENV_KEYS = [
   "VERIFF_SHARED_SECRET",
   "VERIFF_API_BASE_URL",
   "VERIFF_LIVE_CALLS_ENABLED",
+  "KYC_IDENTITY_AUTHORITY",
+  "KYC_MANUAL_REVIEW_ENABLED",
+  "KYC_MANUAL_EVIDENCE_RETENTION_DAYS",
+  "CLOUDINARY_CLOUD_NAME",
+  "CLOUDINARY_API_KEY",
+  "CLOUDINARY_API_SECRET",
+  "CLOUDINARY_KYC_EVIDENCE_FOLDER",
+  "CLOUDINARY_REQUEST_TIMEOUT_MS",
   "CONSENT_ENFORCEMENT",
   "SOCIAL_RATE_LIMIT_FOLLOW_PER_USER",
   "SOCIAL_RATE_LIMIT_WAVE_PER_USER",
@@ -230,6 +286,7 @@ const KNOWN_ENV_KEYS = [
   "RATE_LIMIT_REDIS_COMMAND_TIMEOUT_MS",
   "RESEND_REQUEST_TIMEOUT_MS",
   "RESEND_MAX_RETRIES",
+  "PLATFORM_SUPER_ADMIN_USER_IDS",
   "PLATFORM_IDENTITY_REVIEWER_USER_IDS",
   "STORE_CATALOG_MANAGEMENT_ENABLED",
   "PLATFORM_STORE_CATALOG_MANAGER_USER_IDS",

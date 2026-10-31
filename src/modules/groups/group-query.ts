@@ -9,7 +9,6 @@ export function buildDiscoverableGroupsWhere(input: {
     status: "ACTIVE",
     owner: {
       accountStatus: "ACTIVE",
-      emailVerifiedAt: { not: null },
       ageEligibilityStatus: "ELIGIBLE",
       suspendedAt: null,
       deletedAt: null,

@@ -28,3 +28,25 @@ export const mockWebhookBodySchema = z
   .strict();
 
 export type MockWebhookBody = z.infer<typeof mockWebhookBodySchema>;
+
+/** Minimal Veriff decision webhook — ignores PII fields (KYC-05). */
+const veriffDecisionVerificationSchema = z.object({
+  id: z.string().uuid(),
+  status: z.enum([
+    "approved",
+    "declined",
+    "resubmission_requested",
+    "expired",
+    "abandoned",
+    "review",
+  ]),
+  decisionTime: z.string().datetime().optional(),
+  endUserId: z.string().uuid().nullable().optional(),
+});
+
+export const veriffDecisionWebhookBodySchema = z.object({
+  status: z.literal("success"),
+  verification: veriffDecisionVerificationSchema,
+});
+
+export type VeriffDecisionWebhookBody = z.infer<typeof veriffDecisionWebhookBodySchema>;

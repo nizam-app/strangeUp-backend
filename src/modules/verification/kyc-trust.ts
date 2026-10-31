@@ -3,6 +3,7 @@ import type { IdentityVerificationStatus } from "../../../generated/prisma/clien
 export type KycEnforcementContext = {
   isProduction: boolean;
   kycProviderEnabled: boolean;
+  kycManualReviewEnabled: boolean;
 };
 
 /** Fields required to evaluate current trusted KYC (KYC-03 / KYC-ENF-04). */
@@ -34,7 +35,7 @@ export function hasTrustedKycForEnforcement(
   ctx: KycEnforcementContext,
   now: Date = new Date(),
 ): boolean {
-  if (ctx.isProduction && !ctx.kycProviderEnabled) {
+  if (ctx.isProduction && !ctx.kycProviderEnabled && !ctx.kycManualReviewEnabled) {
     return false;
   }
   if (snapshot.identityVerificationRevokedAt) {

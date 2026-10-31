@@ -288,7 +288,11 @@ export function userRegistrationConsentsSatisfyRegistry(
   ctx: ConsentRegistryContext,
 ):
   | { ok: true }
-  | { ok: false; code: "CONSENT_MISSING" | "CONSENT_VERSION_INVALID" | "CONSENT_VERSION_UNAVAILABLE"; message: string } {
+  | {
+      ok: false;
+      code: "CONSENT_MISSING" | "CONSENT_VERSION_INVALID" | "CONSENT_VERSION_UNAVAILABLE";
+      message: string;
+    } {
   const requirements = listRegistrationRequirements(ctx);
   for (const req of requirements) {
     if (req.availability === "UNAVAILABLE" || !req.activeVersionId || !req.consentType) {

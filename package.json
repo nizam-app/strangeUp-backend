@@ -9,6 +9,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:manual-kyc-test": "tsx scripts/start-manual-kyc-test-api.ts",
+    "manual-kyc-test:check-config": "tsx scripts/check-manual-kyc-test-config.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/src/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -26,7 +28,9 @@
     "db:neon:migrate": "tsx scripts/apply-migrations-neon.ts",
     "db:neon:health": "tsx scripts/neon-health-check.ts",
     "verify:providers": "tsx scripts/verify-providers-local.ts",
-    "cleanup:group-expired-content": "tsx scripts/cleanup-group-expired-content.ts"
+    "cleanup:group-expired-content": "tsx scripts/cleanup-group-expired-content.ts",
+    "seed:admin-activities-sandbox": "tsx scripts/seed-admin-activities-sandbox.ts",
+    "verify:admin-activities-sandbox": "tsx scripts/verify-admin-activities-sandbox.ts"
   },
   "keywords": [],
   "license": "UNLICENSED",

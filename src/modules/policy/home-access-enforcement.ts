@@ -14,7 +14,7 @@ import {
   type OnboardingNextAction,
   type OnboardingPhase,
 } from "./effective-access-policy.js";
-import { resolveVerificationRuntimeConfig } from "../verification/verification-config.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
 
 export type HomeAccessDenialDetails = {
   homeAccessAllowed: false;
@@ -33,11 +33,7 @@ export class MainAppAccessError extends AppError {
 }
 
 function buildKycContext(env: AppEnv) {
-  const verificationConfig = resolveVerificationRuntimeConfig(env);
-  return {
-    isProduction: env.isProduction,
-    kycProviderEnabled: verificationConfig.providerEnabled,
-  };
+  return buildKycEnforcementContext(env);
 }
 
 export async function loadFreshUser(db: DatabaseClient, userId: string): Promise<User | null> {

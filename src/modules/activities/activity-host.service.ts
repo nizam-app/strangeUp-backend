@@ -24,6 +24,7 @@ import {
   isRealWorldActivityMode,
   requiresKycForPublish,
 } from "./activity-policy.js";
+import { applyActivityCancellationRecords } from "./activity-cancellation.js";
 import { activityStartsAtWhere } from "./activity-my-inventory.policy.js";
 import { ACTIVITY_LIST_DEFAULT_LIMIT, ACTIVITY_LIST_MAX_LIMIT } from "./activity.constants.js";
 import { loadHostParticipationSummary } from "./activity-host-participation-summary.js";
@@ -160,11 +161,7 @@ export class ActivityHostService {
       input.joinMode !== undefined &&
       input.joinMode !== existing.joinMode
     ) {
-      throw new AppError(
-        "CONFLICT",
-        "Join mode cannot change after an activity is published",
-        409,
-      );
+      throw new AppError("CONFLICT", "Join mode cannot change after an activity is published", 409);
     }
     const confirmedCount = await this.db.activityParticipation.count({
       where: { activityId, state: "CONFIRMED" },
@@ -282,15 +279,7 @@ export class ActivityHostService {
 
     const now = new Date();
     await this.db.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT 1 FROM "Activity" WHERE "id" = ${activityId} FOR UPDATE`;
-      await tx.activity.update({
-        where: { id: activityId },
-        data: { status: "CANCELLED", cancelledAt: now },
-      });
-      await tx.activityParticipation.updateMany({
-        where: { activityId, state: { in: ["CONFIRMED", "WAITLISTED", "PENDING"] } },
-        data: { state: "CANCELLED", waitlistPosition: null, cancelledAt: now },
-      });
+      await applyActivityCancellationRecords(tx, { activityId, now });
     });
 
     const row = await this.requireOwned(host.id, activityId);

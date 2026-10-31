@@ -268,9 +268,7 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
     await seedPublishedJob(db, "f01other");
 
     const filtered = await request(app)
-      .get(
-        `/v1/jobs?q=${encodeURIComponent(uniqueQ)}&city=Miami&employmentType=FULL_TIME`,
-      )
+      .get(`/v1/jobs?q=${encodeURIComponent(uniqueQ)}&city=Miami&employmentType=FULL_TIME`)
       .set("Authorization", `Bearer ${user.accessToken}`);
     expect(filtered.status).toBe(200);
     expect(filtered.body.data.jobs.length).toBeGreaterThan(0);
@@ -370,7 +368,9 @@ describeStoreJobs("integration: store & jobs (Task 014)", () => {
       .get("/v1/me/job-applications")
       .set("Authorization", `Bearer ${user.accessToken}`);
     expect(apps.status).toBe(200);
-    expect(apps.body.data.applications.some((a: { jobId: string }) => a.jobId === jobId)).toBe(true);
+    expect(apps.body.data.applications.some((a: { jobId: string }) => a.jobId === jobId)).toBe(
+      true,
+    );
     expect(apps.body.data.applications[0].employerDelivery.status).toBe("NOT_CONFIGURED");
   });
 

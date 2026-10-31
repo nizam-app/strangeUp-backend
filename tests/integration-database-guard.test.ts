@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   REQUIRED_INTEGRATION_DATABASE,
   assertIntegrationDatabaseUrlPolicy,
+  assertManualKycTestApiDatabaseUrl,
   normalizeDatabaseTarget,
   redactDatabaseUrl,
+  resolveManualKycTestDatabaseUrl,
   toNeonDirectConnectionString,
   withDatabaseName,
 } from "./setup/integration-database-guard.js";
@@ -62,6 +64,25 @@ describe("integration database guard", () => {
     expect(next).toContain("/strangeup_dev?");
     expect(next).not.toContain("strangeup_dev_owner");
     expect(next).not.toContain("/neondb?");
+  });
+
+  it("assertManualKycTestApiDatabaseUrl allows strangeup_test only", () => {
+    const test =
+      "postgresql://user@ep-test-pooler.c-3.ap-southeast-1.aws.neon.tech/strangeup_test?sslmode=require";
+    assertManualKycTestApiDatabaseUrl(test);
+    const dev =
+      "postgresql://user@ep-dev-pooler.c-3.ap-southeast-1.aws.neon.tech/strangeup_dev?sslmode=require";
+    expect(() => assertManualKycTestApiDatabaseUrl(dev)).toThrow("strangeup_test");
+  });
+
+  it("resolveManualKycTestDatabaseUrl uses INTEGRATION_DATABASE_URL", () => {
+    const integration =
+      "postgresql://user@ep-test-pooler.c-3.ap-southeast-1.aws.neon.tech/strangeup_test?sslmode=require";
+    const resolved = resolveManualKycTestDatabaseUrl({
+      MANUAL_KYC_TEST_DATABASE_SOURCE: "integration",
+      INTEGRATION_DATABASE_URL: integration,
+    });
+    expect(resolved).toBe(integration);
   });
 
   it("redacts credentials from database URLs", () => {

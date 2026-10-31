@@ -2,7 +2,9 @@ import type { ActivationPolicyActor } from "../../src/modules/policy/effective-a
 
 const SESSION_ID = "11111111-1111-4111-8111-111111111111";
 
-export function baseEligibleActor(overrides?: Partial<ActivationPolicyActor>): ActivationPolicyActor {
+export function baseEligibleActor(
+  overrides?: Partial<ActivationPolicyActor>,
+): ActivationPolicyActor {
   return {
     userId: "22222222-2222-4222-8222-222222222222",
     accountStatus: "ACTIVE",
@@ -21,7 +23,7 @@ export function baseEligibleActor(overrides?: Partial<ActivationPolicyActor>): A
   };
 }
 
-/** Email-verified adult with provider KYC + StrangeUp admin approval (main-app access). */
+/** Adult with provider KYC + StrangeUp admin approval (main-app access; email verify not required — Task 031B.2). */
 export function mainAppActivatedActor(
   overrides?: Partial<ActivationPolicyActor>,
 ): ActivationPolicyActor {

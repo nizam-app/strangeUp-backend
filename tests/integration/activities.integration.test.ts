@@ -348,7 +348,9 @@ describeActivities("integration: activities & meetups (Task 010)", () => {
       .set("Authorization", `Bearer ${viewer.accessToken}`);
     expect(hiddenList.status).toBe(200);
     expect(
-      hiddenList.body.data.activities.some((a: { activityId: string }) => a.activityId === activityId),
+      hiddenList.body.data.activities.some(
+        (a: { activityId: string }) => a.activityId === activityId,
+      ),
     ).toBe(false);
 
     const detail = await request(app)

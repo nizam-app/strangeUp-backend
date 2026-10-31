@@ -4,10 +4,7 @@ import type { DatabaseClient } from "../../infrastructure/database/prisma.js";
 import { isBlockedEitherDirection } from "../blocks/block-access.js";
 import { toPublicProfilePreview } from "../discovery/public-profile.dto.js";
 import { hasFullAccountAccess, toPolicyActor } from "../policy/account-policy.js";
-import {
-  canViewPublicProfile,
-  toDiscoverUserSnapshot,
-} from "../policy/public-profile-policy.js";
+import { canViewPublicProfile, toDiscoverUserSnapshot } from "../policy/public-profile-policy.js";
 import { decodeActivityStartsCursor, encodeActivityStartsCursor } from "./activity-cursor.js";
 import { activityForbidden, activityNotFound } from "./activity-errors.js";
 import { canBrowseActivities, canManageOwnActivities } from "./activity-policy.js";
@@ -101,12 +98,7 @@ export class ActivityRosterService {
       const profile = row.user.profile;
       const targetSnapshot = toDiscoverUserSnapshot(row.user);
       const visible = profile
-        ? canViewPublicProfile(
-            viewerSnapshot,
-            targetSnapshot,
-            profile.profileVisibility,
-            blocked,
-          )
+        ? canViewPublicProfile(viewerSnapshot, targetSnapshot, profile.profileVisibility, blocked)
         : false;
       attendees.push({
         userId: row.userId,

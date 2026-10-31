@@ -34,8 +34,12 @@ export function buildPublishedJobListWhere(input: {
     closedAt: null,
     ...(input.query.employmentType ? { employmentType: input.query.employmentType } : {}),
     ...(input.query.workMode ? { workMode: input.query.workMode } : {}),
-    ...(input.query.city ? { locationCity: { equals: input.query.city, mode: "insensitive" } } : {}),
-    ...(input.query.region ? { locationRegion: { equals: input.query.region, mode: "insensitive" } } : {}),
+    ...(input.query.city
+      ? { locationCity: { equals: input.query.city, mode: "insensitive" } }
+      : {}),
+    ...(input.query.region
+      ? { locationRegion: { equals: input.query.region, mode: "insensitive" } }
+      : {}),
     ...(and.length > 0 ? { AND: and } : {}),
   };
 }

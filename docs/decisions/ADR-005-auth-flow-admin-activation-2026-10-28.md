@@ -29,3 +29,9 @@ Provider identity verification remains the **only** authority for document/selfi
 
 - `cursor_tasks/StrangeUp_TASK_022_Auth_Onboarding_Admin_Approval_Flow_Repair.md`
 - `cursor_tasks/StrangeUp_Task_022_Staged_Auth_Repair_Execution.md`
+
+---
+
+## Amendment (2026-10-30 — Task 031B.2)
+
+**Supersedes** the verified-email prerequisite for Home/onboarding/IDV/admin approve only. See **`ADR-005-amendment-2026-10-30-email-optional-onboarding.md`**. Trusted KYC + admin activation on the same session remain mandatory.

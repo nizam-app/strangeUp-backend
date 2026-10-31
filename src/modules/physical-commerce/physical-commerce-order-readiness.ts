@@ -3,7 +3,10 @@ import type {
   CartLineAvailabilityReason,
 } from "../store/store-cart-lines.js";
 import { STORE_ORDER_PLACEMENT_UNAVAILABLE } from "./physical-commerce.constants.js";
-import type { StoreOrderReadinessBlockedLineDto, StoreOrderReadinessDto } from "./physical-commerce.types.js";
+import type {
+  StoreOrderReadinessBlockedLineDto,
+  StoreOrderReadinessDto,
+} from "./physical-commerce.types.js";
 
 export type CartLineOrderReadinessInput = {
   variantId: string;
@@ -47,7 +50,9 @@ function messageForBlock(code: StoreOrderReadinessBlockedLineDto["blockReasonCod
   }
 }
 
-export function assessCartOrderReadiness(lines: CartLineOrderReadinessInput[]): StoreOrderReadinessDto {
+export function assessCartOrderReadiness(
+  lines: CartLineOrderReadinessInput[],
+): StoreOrderReadinessDto {
   const blockedLines: StoreOrderReadinessBlockedLineDto[] = [];
 
   for (const line of lines) {

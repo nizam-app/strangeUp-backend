@@ -1,3 +1,45 @@
+# StrangeUp Engineering Status (as of 2026-10-31, Task 033E)
+
+**Task 033E (Apply ActivityModerationDecision migration):** **COMPLETE (schema only)** — Owner-authorized `scripts/migrate-integration-only.ts` applied **only** `20261031140000_task033d_activity_moderation_decision` to Neon **`strangeup_test`**. Live `current_database() = 'strangeup_test'` was true; catalog is now **28/28**. Read-back confirmed enum `ActivityModerationAction` (`CANCEL`), table `ActivityModerationDecision` (0 rows), unique idempotency index, activity/actor indexes, and FKs to `Activity` (CASCADE) / `User` (RESTRICT). **`strangeup_dev` remains 23 migrations and does not have this table. No production URL in this workspace. No seed, cleanup, cancel, or E2E writes.** **STOP after 033E.**
+
+**Task 033C (Activities synthetic seed + real Admin UI verification):** **COMPLETE (sandbox-verified)** — Repeatable seed `scripts/seed-admin-activities-sandbox.ts` wrote **22 users / 36 activities / 119 participations** to Neon **`strangeup_test` only** after live `current_database()` checks. Authorized `IDENTITY_REVIEWER` API smoke **26/26**. Admin Vite `:5174` confirmed six metric cards, populated list/filters/pagination/CSV, and Details (hero, overview, host, roster, honest unavailable modules). One in-scope UI fix: Activities table wrapper `overflow-x-auto` so Status/View Details are reachable. Cleanup is dry-run by default and limited to task-owned `TASK033C_SANDBOX_SEED` rows. **No writes to `strangeup_dev` or production. No migrations. Veriff/Manual KYC/Cloudinary unchanged.** **STOP after 033C.**
+
+**Task 032E (Users Management final sandbox E2E + socket revocation):** **COMPLETE (sandbox-verified)** — `applyAccountRestrictionSideEffects` is invoked after a committed `SUSPEND` only (not before commit; failures logged, decision not rolled back). Isolated E2E on Neon **`strangeup_test` 27/27** via API `:3010` / Admin BFF `:3011` / Vite `:5174`: authorized staff login, Users List/Details, suspend/restore, audit, idempotency, authorization, session/device revocation, Home denial, and live socket eviction. Temporary `SUPER_ADMIN` on an existing synthetic `IDENTITY_REVIEWER` was granted and **revoked**. Target returned to `ACTIVE`. **Veriff and Manual KYC unchanged.** **No migration applied to `strangeup_dev` or production.** **STOP:** Users Management sign-off is recommended for the isolated sandbox; production/dev rollout still depends on owner applying `20261031120000_task032c_account_moderation_decision` and controlled `SUPER_ADMIN` provisioning.
+
+**032A–032D recap:** List + Details + Suspend/Restore writers + 032C migration on `strangeup_test` only.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-30, Task 031I-M1)
+
+**Task 031I-M1 (Manual KYC + Cloudinary evidence):** **COMPLETE (backend code + unit tests)** — explicit `KYC_IDENTITY_AUTHORITY` paths; Cloudinary authenticated upload/download/destroy adapter; manual session + evidence APIs; staff proxy delivery + manual identity decision (distinct from Veriff webhooks). **Veriff files untouched** (031I-1 adapter remains gated). **MIGRATION PENDING** `20261030180000_task031im1_manual_kyc_cloudinary_evidence`. Production fail-closed for manual/Cloudinary. **STOP:** owner applies migration, Cloudinary creds on non-prod, `KYC_IDENTITY_AUTHORITY=manual` + `KYC_MANUAL_REVIEW_ENABLED=true` smoke; no Flutter/Admin edits in this checkpoint.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-30, Task 031I-1)
+
+**Task 031I-1 (Veriff sandbox backend integration):** **COMPLETE (code + mocked tests)** — Veriff `POST /v1/sessions` adapter, decision webhook HMAC + `x-auth-client` validation, stale/revoked identity guards, Flutter handoff §12. **Not live-tested** against Veriff sandbox until owner supplies credentials and approves `VERIFF_LIVE_CALLS_ENABLED=true` on a non-production API. Production remains fail-closed (mock/Veriff live forbidden). **STOP:** owner sandbox credentials + portal webhook URL + optional live sandbox smoke.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-30, Task 031H-2)
+
+**Task 031H-2 (Verification batch approve/reject):** **COMPLETE (code)** — `POST /v1/admin/identity-reviews/batch-decide` (max 10, non-atomic, per-item idempotency keys derived from `batchRequestId` + payload fingerprint); Admin BFF + queue batch selection/confirm/results UI. **Limitation:** no single DB row binds an entire batch payload — fingerprint is embedded in per-applicant keys only. Integration: `admin-identity-review-031h2.integration.test.ts` (skipped unless `RUN_INTEGRATION=1`).
+
+**Task 031H-1 (Verification queue CSV export):** **COMPLETE (code)** — `GET /v1/admin/identity-reviews/export` with list-equivalent filters, 1k row cap + truncation headers, CSV injection defenses, structured access log via `pino` (no durable DB audit row). Admin BFF + queue **Export CSV** UI.
+
+**Task 031G (Paginated admin decision audit history):** **COMPLETE (code)** — `GET /v1/admin/identity-reviews/:reviewId/decisions` (cursor pagination); Admin BFF + audit panel use paginated decisions with dual load-more streams. Integration: `admin-identity-review-031g.integration.test.ts` (skipped unless `RUN_INTEGRATION=1`).
+
+**Task 031F-1 (Internal review hold + staff notes — backend code):** **MIGRATION PENDING** — schema + migration SQL `20261030150000_task031f1_internal_review_hold_notes`; routes hold/return/notes; summary split + list `posture`. **Not production-ready** until owner applies migration to dev/test/prod. Integration tests prepared (`admin-identity-review-031f1.integration.test.ts`, skipped). **STOP:** owner applies migration, then run integration suite + 031F-2 Admin UI.
+
+---
+
+# StrangeUp Engineering Status (as of 2026-10-30, Task 031B.2)
+
+**Task 031B.2 (Mandatory email verification gate removal):** **COMPLETE** — backend policy only. Register → `ACTIVE` without auto verify email; `hasHomeAccess` and admin approve no longer require `emailVerifiedAt`; optional `POST /v1/auth/email-verification/*` retained. ADR-005 amendment `docs/decisions/ADR-005-amendment-2026-10-30-email-optional-onboarding.md`. Docs/handoff updated. **STOP:** await owner before Admin Panel BFF/UI or KYC provider activation.
+
+---
+
 # StrangeUp Engineering Status (as of 2026-10-29, Task 030 complete)
 
 **Task 030 (Backend completion & Admin Panel readiness):** **COMPLETE (audit only)** — no code, migrations, or Admin UI. Deliverables: `TASK_030_BACKEND_COMPLETION_AUDIT_REPORT.md`, `ADMIN_PANEL_API_READINESS_MATRIX.md`, `BACKEND_REMAINING_WORK_CHECKLIST.md` (includes proposed **Task 031** Admin Panel phases). **Finding:** Flutter/staging APIs are broadly **IMPLEMENTED** within deferred flags; **production release not ready** (MDWQ-0099–0103, KYC/email/media). Task **022B** identity-review REST is **ready for a separate React Admin Panel**; gaps: global user search, suspend REST, request-more-info, full audit pagination. **`strangeup_dev`** missing migrations **028C+028G** (**MDWQ-0310**); **`strangeup_test`** current (**22/22**). **STOP:** await owner review before **Task 031** or backend P0/P1 implementation.

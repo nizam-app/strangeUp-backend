@@ -10,10 +10,8 @@ import {
   toPolicyActor,
 } from "../policy/account-policy.js";
 import type { KycEnforcementContext } from "../verification/kyc-trust.js";
-import {
-  profilePatchTouchesLegalName,
-  resolveLegalNameLocked,
-} from "./profile-identity-policy.js";
+import { buildKycEnforcementContext } from "../verification/kyc-identity-authority.js";
+import { profilePatchTouchesLegalName, resolveLegalNameLocked } from "./profile-identity-policy.js";
 import { normalizeUsername } from "./username.js";
 import type { ProfilePatchInput } from "./me.validation.js";
 
@@ -85,10 +83,7 @@ export class MeService {
     private readonly db: DatabaseClient,
     env: AppEnv,
   ) {
-    this.kyc = {
-      isProduction: env.isProduction,
-      kycProviderEnabled: env.KYC_PROVIDER_ENABLED,
-    };
+    this.kyc = buildKycEnforcementContext(env);
   }
 
   async getAccount(user: User): Promise<AccountDto> {

@@ -8,7 +8,10 @@ import { AppError } from "../../common/errors/app-error.js";
 import type { MediaObjectStore } from "../../infrastructure/media-storage/media-object-store.types.js";
 import { isMediaStorageNotFound } from "../../infrastructure/media-storage/media-storage.errors.js";
 import { S3MediaObjectStore } from "../../infrastructure/media-storage/s3-media-object-store.js";
-import { getSharedS3Client, resolveS3MediaConfig } from "../../infrastructure/media-storage/s3-config.js";
+import {
+  getSharedS3Client,
+  resolveS3MediaConfig,
+} from "../../infrastructure/media-storage/s3-config.js";
 import {
   assertStorageKeySegments,
   assertUuidSegment,
@@ -23,7 +26,9 @@ const EXT_BY_CONTENT_TYPE: Record<AvatarStoredContentType, string> = {
 };
 
 export type StoreProductImageStorage = {
-  openReadStream(storageKey: string): Promise<{ stream: ReadStream | Readable; absolutePath?: string }>;
+  openReadStream(
+    storageKey: string,
+  ): Promise<{ stream: ReadStream | Readable; absolutePath?: string }>;
   save(
     productId: string,
     buffer: Buffer,

@@ -11,8 +11,18 @@ import {
   resolveOnboardingPhase,
   toActivationPolicyActor,
 } from "../policy/effective-access-policy.js";
-import { canStartVerificationSession, resolveVerificationRuntimeConfig } from "../verification/verification-config.js";
-import { canStartVerification as canStartIdv, isTerminalUserKyc } from "../verification/verification-policy.js";
+import {
+  buildKycEnforcementContext,
+  resolveKycIdentityAuthority,
+} from "../verification/kyc-identity-authority.js";
+import {
+  canStartVerificationSession,
+  resolveVerificationRuntimeConfig,
+} from "../verification/verification-config.js";
+import {
+  canStartVerification as canStartIdv,
+  isTerminalUserKyc,
+} from "../verification/verification-policy.js";
 
 export class OnboardingService {
   constructor(
@@ -27,10 +37,8 @@ export class OnboardingService {
     }
 
     const verificationConfig = resolveVerificationRuntimeConfig(this.env);
-    const kycCtx = {
-      isProduction: this.env.NODE_ENV === "production",
-      kycProviderEnabled: verificationConfig.providerEnabled,
-    };
+    const authority = resolveKycIdentityAuthority(this.env);
+    const kycCtx = buildKycEnforcementContext(this.env);
 
     const latest = await this.db.verificationSession.findFirst({
       where: { userId: user.id },
@@ -39,7 +47,8 @@ export class OnboardingService {
     });
 
     const canStart =
-      canStartVerificationSession(verificationConfig) &&
+      ((authority.providerSessionStartAllowed && canStartVerificationSession(verificationConfig)) ||
+        authority.manualReviewAllowed) &&
       canStartIdv(actor, user) &&
       !isTerminalUserKyc(user);
 
@@ -80,9 +89,6 @@ export class OnboardingService {
     if (!homeAccessAllowed) {
       limitations.push("MAIN_APP_ACCESS_DENIED");
     }
-    if (emailVerificationStatus === "UNVERIFIED") {
-      limitations.push("EMAIL_VERIFICATION_REQUIRED");
-    }
     if (!canStart && verificationConfig.runtimeStatus === "FEATURE_DISABLED") {
       limitations.push("IDENTITY_PROVIDER_DISABLED");
     }
@@ -101,7 +107,10 @@ export class OnboardingService {
       canRetry: canRetry && canStartVerificationSession(verificationConfig),
       limitations,
       updatedAt: user.updatedAt.toISOString(),
-      verificationStepHint: mapVerificationStepHint(latest?.status ?? null, user.identityVerificationStatus),
+      verificationStepHint: mapVerificationStepHint(
+        latest?.status ?? null,
+        user.identityVerificationStatus,
+      ),
     };
   }
 }

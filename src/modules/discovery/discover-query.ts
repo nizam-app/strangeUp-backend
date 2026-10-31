@@ -41,7 +41,6 @@ export function buildDiscoverableUsersWhere(
   const where: Prisma.UserWhereInput = {
     id: { not: viewer.userId },
     accountStatus: "ACTIVE",
-    emailVerifiedAt: { not: null },
     ageEligibilityStatus: "ELIGIBLE",
     suspendedAt: null,
     deletedAt: null,

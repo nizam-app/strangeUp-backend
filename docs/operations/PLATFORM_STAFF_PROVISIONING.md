@@ -1,8 +1,20 @@
 # Platform staff provisioning (Task 022B)
 
+## Super admin (owner-facing)
+
+The Admin Panel uses a single owner-facing **`SUPER_ADMIN`** grant for local/staging operators who need all **implemented** staff-gated admin APIs (identity review, store catalog when feature-flagged, etc.). Middleware still enforces authentication, audit paths, and product feature flags — `SUPER_ADMIN` does not bypass KYC/home gates for customer accounts.
+
+```sql
+INSERT INTO "PlatformStaffGrant" ("id", "userId", "role", "grantedAt")
+VALUES (gen_random_uuid(), '<staff-user-uuid>', 'SUPER_ADMIN', NOW())
+ON CONFLICT ("userId", "role") DO UPDATE SET "revokedAt" = NULL, "grantedAt" = NOW();
+```
+
+Non-production optional env: `PLATFORM_SUPER_ADMIN_USER_IDS` (comma-separated user UUIDs) with `syncPlatformStaffBootstrapGrants()` — **must not** be set in production.
+
 ## Identity reviewers
 
-StrangeUp **identity admin review** APIs require an active `PlatformStaffGrant` with role `IDENTITY_REVIEWER`. Grants are stored server-side; client apps cannot assign roles.
+StrangeUp **identity admin review** APIs require an active `PlatformStaffGrant` with role `IDENTITY_REVIEWER`, or **`SUPER_ADMIN`**. Grants are stored server-side; client apps cannot assign roles.
 
 ### Production (required process)
 
@@ -34,7 +46,7 @@ ON CONFLICT ("userId", "role") DO UPDATE SET "revokedAt" = NULL, "grantedAt" = N
 
 ## Store catalog managers (Task 024B)
 
-Merchandise **catalog CRUD and image ingest** require role **`STORE_CATALOG_MANAGER`**. This is **independent** of `IDENTITY_REVIEWER`.
+Merchandise **catalog CRUD and image ingest** require role **`STORE_CATALOG_MANAGER`**, or **`SUPER_ADMIN`**. This is **independent** of `IDENTITY_REVIEWER` (unless consolidated via super admin).
 
 See `docs/operations/STORE_CATALOG_MANAGEMENT_TASK024B.md` for API list, `STORE_CATALOG_MANAGEMENT_ENABLED` gate, and S3 migration notes.
 
