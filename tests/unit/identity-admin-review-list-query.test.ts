@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildFilterFingerprint,
   buildIdentityReviewListWhere,
@@ -8,7 +8,13 @@ import {
 } from "../../src/modules/admin/identity-admin-review-list-query.js";
 import { manualIdentityReviewPendingCriteria } from "../../src/modules/admin/identity-admin-review-pending-eligibility.js";
 
+const FIXED_NOW = new Date("2026-10-31T12:00:00.000Z");
+
 describe("identity-admin-review-list-query", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("requires inverted date range rejection", () => {
     expect(() => parseSubmittedDateRange("2026-09-15", "2026-09-01")).toThrowError(/submittedFrom/);
   });
@@ -19,6 +25,9 @@ describe("identity-admin-review-list-query", () => {
   });
 
   it("includes platform and manual identity pending eligibility for posture all", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_NOW);
+
     const where = buildIdentityReviewListWhere(
       { status: "PENDING", posture: "all" },
       { from: null, to: null },
@@ -41,6 +50,9 @@ describe("identity-admin-review-list-query", () => {
   });
 
   it("filters actionable pending posture with manual identity branch", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(FIXED_NOW);
+
     const where = buildIdentityReviewListWhere(
       { status: "PENDING", posture: "actionable" },
       { from: null, to: null },
