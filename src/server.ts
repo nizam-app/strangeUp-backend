@@ -67,8 +67,11 @@ async function main(): Promise<void> {
     resetMessagingRealtimeBus();
   }
 
-  httpServer.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, nodeEnv: env.NODE_ENV }, "server listening");
+  httpServer.listen(env.PORT, env.HOST, () => {
+    logger.info(
+      { port: env.PORT, host: env.HOST, nodeEnv: env.NODE_ENV },
+      "server listening",
+    );
   });
 
   const shutdown = (signal: string) => {

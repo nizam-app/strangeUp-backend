@@ -6,6 +6,7 @@ generated/
 # Environment (keep example only)
 .env
 .env.*
+/env
 !.env.example
 !.env.manual-kyc-test.example
 

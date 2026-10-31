@@ -13,6 +13,7 @@ const envSchema = z
   .object({
     NODE_ENV: nodeEnvSchema.default("development"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    HOST: z.string().default("0.0.0.0"),
     DATABASE_URL: z.string().min(1).optional(),
     CORS_ORIGINS: z.string().default("http://localhost:3000"),
     LOG_LEVEL: z
